@@ -103,11 +103,101 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 5
 done
 
+# ---------------------------------------------------------------------------
+# The path a developer takes, which the container path does not cover
+# ---------------------------------------------------------------------------
+
+# Two paths reach the same build and only one of them was checked: the image
+# runs the Dockerfile's CMD, and a developer runs `pnpm start`. Putting this
+# in a second script beside this one would recreate exactly the problem this
+# script exists for — two gates, each covering the path its author takes.
+#
+# It costs about five seconds. That was worth measuring rather than assuming,
+# because a check slow enough to skip is worse than a hole.
+check_web() {
+    command -v pnpm >/dev/null 2>&1 || { say "Web (skipped — pnpm not installed)"; return 0; }
+    [ -f dashboard/package.json ] || return 0
+
+    say "Web: the path a developer takes"
+
+    local log port
+    log=$(mktemp)
+    port=${WEB_SMOKE_PORT:-14999}
+
+    if ! pnpm --filter dashboard build > "$log" 2>&1; then
+        tail -15 "$log"; rm -f "$log"
+        fail "pnpm --filter dashboard build"
+        return 1
+    fi
+
+    PORT="$port" pnpm --filter dashboard start > "$log" 2>&1 &
+    local pid=$!
+
+    local ok=1
+    for _ in $(seq 1 30); do
+        if curl -fsS -o /dev/null "http://localhost:$port/api/health" 2>/dev/null; then ok=0; break; fi
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+    done
+
+    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+
+    if [ "$ok" -ne 0 ]; then
+        tail -15 "$log"; rm -f "$log"
+        fail "pnpm start never served /api/health on port $port"
+        return 1
+    fi
+
+    # Answering 200 is not the same as being correct, and this is the case
+    # that proves it: with output:"standalone", `next start` serves the
+    # ordinary build sitting beside the standalone one and returns 200 while
+    # telling you the configuration is unsupported. A health check alone
+    # goes green on a command Next says does not work.
+    if grep -qiE 'does not work with|is not supported|deprecated and will be removed' "$log"; then
+        printf '\n'; grep -iE 'does not work with|is not supported|deprecated and will be removed' "$log" | sed 's/^/        /'
+        rm -f "$log"
+        fail "pnpm start answered, but reported its own configuration unsupported"
+        return 1
+    fi
+
+    # Answering with a clean log is still not the same as being correct.
+    # The failure this fix repaired serves markup with no CSS and no JS —
+    # a 200, a quiet server, and a blank white page. So follow one
+    # stylesheet the page actually asks for and confirm it resolves with
+    # content behind it.
+    local page css asset_status asset_bytes
+    page=$(curl -fsS "http://localhost:$port/" 2>/dev/null || true)
+    css=$(printf '%s' "$page" | grep -oE '/_next/static/[^"]+\.css' | head -1)
+
+    if [ -z "$css" ]; then
+        rm -f "$log"
+        fail "the page referenced no stylesheet — served markup with no assets"
+        return 1
+    fi
+
+    asset_status=$(curl -s -o /tmp/df-asset -w '%{http_code}' "http://localhost:$port$css" 2>/dev/null || echo 000)
+    asset_bytes=$(wc -c < /tmp/df-asset 2>/dev/null || echo 0)
+    rm -f /tmp/df-asset
+
+    if [ "$asset_status" != "200" ] || [ "$asset_bytes" -lt 100 ]; then
+        rm -f "$log"
+        fail "$css returned $asset_status, $asset_bytes bytes — the server answers but serves nothing"
+        return 1
+    fi
+
+    rm -f "$log"
+    pass "pnpm build + start — /api/health, no configuration warning, assets resolve ($asset_bytes bytes)"
+    return 0
+}
+
+web_failed=0
+check_web || web_failed=1
+
 say "Result"
 docker compose ps -a --format 'table {{.Service}}\t{{.Status}}'
 echo
 
-failed=0
+failed=$web_failed
 for service in $SERVICES; do
     status=$(docker compose ps -a --format '{{.Service}} {{.Status}}' | grep "^$service " | cut -d' ' -f2- || true)
 

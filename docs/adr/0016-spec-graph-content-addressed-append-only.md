@@ -65,3 +65,51 @@ hand-edited back into meaning.
   engine — the model only needs to support nodes, typed edges, revisions,
   and named snapshots, not merges, branches, or conflict resolution beyond
   what `conflicts_with` edges make visible to a human.
+
+## Amendment: an amendment records who, when, and *why* — per change
+
+The original decision said "every amendment carries provenance:
+conversation id, turn id, proposer, approver, timestamp." That is who and
+when. It omitted why, and the omission was inherited by the code: the wire
+contract asked for a rationale on every element, the model supplied one,
+and nothing carried it to storage in a form anything could read.
+
+**The rationale is part of an amendment's provenance and is recorded per
+element, not per amendment.** One approval routinely creates a node for one
+reason and retires another for a different one; a single rationale on the
+amendment would have to pick between them, which is how a record stops
+being a record.
+
+It is deliberately **not** part of the canonical text a revision is hashed
+from. Two people can agree on a rule and disagree about the reason for it,
+and that must not produce two revisions of the same rule.
+
+Each revision therefore carries the reason it was made for, and
+`df.specs.get` returns a node's revision history rather than only its
+current text — because "why does this say what it says" is rarely answered
+by the latest revision, and usually answered by the one that changed it.
+
+### What was actually wrong, since the two halves failed differently
+
+- **Creates and revises** were *buried*. The translator serialized the
+  rationale into each element's `ContentJson`, so it did reach the database
+  and did reach the revision — but no reader ever looked there, and the
+  rendered amendment showed `null`.
+- **Retires and both edge kinds** were *dropped*. Those internal records had
+  no field for a rationale at all, so the value was discarded when the wire
+  document was translated, before the amendment was ever written.
+
+Both surfaced identically as `rationale: null` on an approval card, which
+is the part worth remembering: **"nobody gave a reason" and "we lost the
+reason" rendered the same**, so the loss was invisible from the outside for
+as long as it existed. Migration `0009` recovers the first from the
+amendment itself and the second from `turns.payloads`, and never overwrites
+a rationale that is already stored — what a human approved outranks what a
+migration can reconstruct.
+
+## Consequences of this amendment
+- `SpecDiff`'s elements each carry a `Rationale`, and it round-trips from
+  the wire to the rendered amendment.
+- `df.specs.get` returns `revisions[]`, each with its text, its reason, and
+  the provenance of the approval that made it.
+- A null rationale now means what it says: nobody gave one.

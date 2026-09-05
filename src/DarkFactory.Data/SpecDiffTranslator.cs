@@ -133,23 +133,56 @@ public sealed class SpecDiffTranslator(DarkFactoryDbContext db)
     }
 
     /// <summary>
-    /// Maps the wire document onto the internal diff. The factory derives
+    /// Maps the wire document onto the internal diff, rationale included on
+    /// every element (docs/adr/0016, as amended). The factory derives
     /// canonical text and content — a model never gets to choose a node's
     /// content hash, or to hand over a canonical form that disagrees with
     /// the text a human was shown and approved.
     /// </summary>
     public static SpecDiff ToSpecDiff(SpecDiffDocument document) => new(
         Creates: document.Creates
-            .Select(c => new SpecDiffNodeCreate(c.Kind, c.Layer, Content(c.Text, c.Rationale), Canonicalize(c.Text)))
+            .Select(c => new SpecDiffNodeCreate(
+                c.Kind, c.Layer, Content(c.Text, c.Rationale), Canonicalize(c.Text), c.Rationale))
             .ToList(),
         Revises: document.Revises
-            .Select(r => new SpecDiffNodeRevise(r.SpecId, Content(r.Text, r.Rationale), Canonicalize(r.Text)))
+            .Select(r => new SpecDiffNodeRevise(
+                r.SpecId, Content(r.Text, r.Rationale), Canonicalize(r.Text), r.Rationale))
             .ToList(),
-        Retires: document.Retires.Select(r => new SpecDiffNodeRetire(r.SpecId)).ToList(),
+        Retires: document.Retires.Select(r => new SpecDiffNodeRetire(r.SpecId, r.Rationale)).ToList(),
         EdgeAdds: document.EdgeAdds
-            .Select(e => new SpecDiffEdgeAdd(e.FromSpecId, e.ToSpecId, e.Kind))
+            .Select(e => new SpecDiffEdgeAdd(e.FromSpecId, e.ToSpecId, e.Kind, e.Rationale))
             .ToList(),
-        EdgeRetires: document.EdgeRetires.Select(e => new SpecDiffEdgeRetire(e.EdgeId)).ToList());
+        EdgeRetires: document.EdgeRetires
+            .Select(e => new SpecDiffEdgeRetire(e.EdgeId, e.Rationale)).ToList());
+
+    /// <summary>
+    /// Reads the rationale back out of a revision's stored content.
+    ///
+    /// It rides inside <c>content_json</c> so a revision carries its own
+    /// reason without a column — which is what lets df.specs.get show why
+    /// each revision in a node's history was made, rather than only why the
+    /// latest one was. The amendment records the same value separately,
+    /// because the two answer different questions: this one is "why does
+    /// this revision say what it says", the amendment's is "why was this
+    /// change proposed". Both are written from one source in one place.
+    /// </summary>
+    public static string? RationaleOf(string contentJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(contentJson);
+            return document.RootElement.TryGetProperty("Rationale", out var value)
+                && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            // Content that predates this shape, or was written directly.
+            // A missing reason is not a broken revision.
+            return null;
+        }
+    }
 
     /// <summary>
     /// The canonical form a revision is hashed from (docs/adr/0016). Line
