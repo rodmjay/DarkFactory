@@ -2,10 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://darkfactory.dev/schemas/describe.schema.json",
   "title": "DescribeResponse",
-  "description": "The response to df.describe(), the mandatory handshake every compliant server answers. See docs/conventions/describe.md and ADR-0018. The factory validates every describe response against this schema before storing it; a server that answers but does not validate fails registration.",
+  "description": "The response to df.describe(), the mandatory handshake every compliant server answers. See docs/conventions/describe.md and ADR-0018. The factory validates every describe response against this schema before storing it; a server that answers but does not validate fails registration. Unknown top-level properties are rejected so that a typo (`capabilties`) fails loudly instead of registering as an empty capability list; forward compatibility lives in `extensions`, which is open — see its description and ADR-0020.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Open by design, and the only place a newer convention version may put fields an older factory has never heard of. A minor version may add capability ONLY here, or as an optional top-level field this schema declares — which means a server built against 1.1 still validates on a factory that only knows 1.0, provided its additions live here. The factory ignores keys it does not recognise rather than rejecting the response (ADR-0020's overlap window)."
+    },
     "name": {
       "type": "string",
       "minLength": 1,

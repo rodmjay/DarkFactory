@@ -41,6 +41,17 @@ public sealed record DescribeResponse
     /// </summary>
     [JsonPropertyName("effective_config")]
     public required IReadOnlyDictionary<string, JsonElement> EffectiveConfig { get; init; }
+
+    /// <summary>
+    /// The forward-compatibility escape hatch (docs/adr/0020). Unknown
+    /// top-level properties are rejected — that is what catches a
+    /// <c>capabilties</c> typo — so a newer convention version puts fields
+    /// an older factory has never heard of in here instead, where they are
+    /// ignored rather than fatal.
+    /// </summary>
+    [JsonPropertyName("extensions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, JsonElement>? Extensions { get; init; }
 }
 
 /// <summary>One schema violation, in a form that reads usefully in an error message.</summary>

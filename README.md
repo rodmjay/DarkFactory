@@ -39,6 +39,7 @@ This brings up:
 | `migrate`   | One-shot: applies pending `.sql` migrations (`DarkFactory.Migrate`), then exits | runs once, no ports |
 | `factory`   | The MCP server + API + SignalR hub + webhook ingress (`DarkFactory.Mcp`) | `localhost:5100`, MCP endpoint at `http://localhost:5100/mcp` |
 | `worker`    | The background engine (`DarkFactory.Engine`) — same image as `factory`, different entrypoint | internal only |
+| `workspace-demo` | The reference workspace server, serving a seeded **copy** of this repo | `localhost:8931`, MCP at `http://workspace-demo:8931/mcp` |
 | `dashboard` | The Next.js dashboard | `localhost:3000` |
 
 `factory` and `worker` both depend on `migrate` completing successfully
@@ -62,22 +63,22 @@ show `healthy` for each once they're up. `factory`/`worker` expose
 `GET /health` (liveness) and `GET /health/ready` (readiness — checks
 Postgres connectivity); `dashboard` exposes `GET /api/health`.
 
-The reference workspace server (`reference/workspace-mcp`) is **not** a
-Compose service — see step 2. That is deliberate: a real customer's
-workspace server never will be either. `factory` gets a
-`host.docker.internal` mapping so `df.servers.register` can reach one
-running on your machine.
-
 ### Registering a server
 
-```bash
-# in one terminal: the reference workspace server, pointed at any repo
-cd reference/workspace-mcp && npm install && npm run build
-node dist/index.js --http 8931 --root /path/to/some/repo
+`workspace-demo` exists so the end-to-end demo runs on any machine: it
+serves a **copy** of this repository (seeded fresh on every start, with its
+own throwaway git history and no remote), so a demo run can branch, write
+and commit without touching your working tree — and without depending on a
+`host.docker.internal` route that a host firewall may block.
 
-# then register it with the factory
-#   df.servers.register(url: "http://host.docker.internal:8931/mcp")
 ```
+df.servers.register(url: "http://workspace-demo:8931/mcp")
+```
+
+That is a convenience for the demo, not the shape of the product. A real
+customer's workspace server runs wherever their code lives and the factory
+reaches it over the network — see [step 2](#2-from-another-repo). `factory`
+also gets a `host.docker.internal` mapping for that path.
 
 Registration calls `df.describe`, validates the answer against
 [`contracts/schemas/describe.schema.json`](contracts/schemas/describe.schema.json),

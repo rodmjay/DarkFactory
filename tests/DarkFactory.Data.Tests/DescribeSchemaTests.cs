@@ -109,6 +109,46 @@ public sealed class DescribeSchemaTests
     }
 
     [Fact]
+    public void ANewerServerIsNotRejectedByAnOlderFactory()
+    {
+        // docs/adr/0020's overlap window, from the other direction: a
+        // server built against a later convention version adds capability
+        // under `extensions`, which is open, so a factory that has never
+        // heard of those keys still validates the response instead of
+        // refusing to register a server that is strictly newer than it.
+        var document = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Json(FakeServerProbe.Describe()))!;
+        document["extensions"] = JsonSerializer.SerializeToElement(new
+        {
+            rate_limit_per_minute = 600,
+            something_invented_in_1_1 = new { nested = true },
+        });
+
+        var result = DescribeSchema.Validate(JsonSerializer.Serialize(document));
+        Assert.True(result.IsValid, result.Summarize());
+    }
+
+    [Fact]
+    public void ExtensionsIsTheOnlyPlaceUnknownFieldsAreTolerated()
+    {
+        // The rule is narrow on purpose: forward compatibility goes in
+        // `extensions`, not anywhere a server feels like putting it, or
+        // the typo protection above evaporates.
+        var document = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Json(FakeServerProbe.Describe()))!;
+        document["rate_limit_per_minute"] = JsonSerializer.SerializeToElement(600);
+
+        Assert.False(DescribeSchema.Validate(JsonSerializer.Serialize(document)).IsValid);
+    }
+
+    [Fact]
+    public void ExtensionsMustStillBeAnObject()
+    {
+        var document = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Json(FakeServerProbe.Describe()))!;
+        document["extensions"] = JsonSerializer.SerializeToElement("not an object");
+
+        Assert.False(DescribeSchema.Validate(JsonSerializer.Serialize(document)).IsValid);
+    }
+
+    [Fact]
     public void EchoingTheEnvelopeBackFailsValidation()
     {
         // Every other convention tool echoes the envelope; df.describe must

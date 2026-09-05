@@ -78,12 +78,48 @@ in the dashboard. Put the repo, branch, environment name, or subscription
 `df.describe` holds itself to this: it reports its environment name and
 Foundry resource name and nothing else.
 
-## Versioning
+## Versioning, and why `extensions` exists
 
 `convention_version` is semver and is the value the factory content-negotiates
 on. The factory supports **at least two versions concurrently**
 ([ADR-0020](../adr/0020-convention-versioning.md)) and adapts per server,
 shimming renames and added fields where it can.
+
+The schema rejects unknown top-level properties. That is deliberate and it
+is what catches the failure that actually happens in practice: a server
+sending `capabilties` would otherwise register cleanly with an empty
+capability list and look fine until a run needed one of them.
+
+But strictness alone would break the overlap window in the other direction
+— a server built against 1.1 that adds a field would fail validation on a
+factory that still only knows 1.0, which is exactly backwards. So:
+
+> **A minor version may add capability only under `extensions`, or as an
+> optional top-level field this schema declares.**
+
+`extensions` is an open object. The factory ignores keys it does not
+recognise. A 1.1 server therefore validates on a 1.0 factory as long as its
+additions live there, and a 1.0 server keeps validating on a 1.1 factory
+because everything 1.1 added is optional.
+
+Promoting an `extensions` key to a real top-level field is a normal
+convention change: the new schema declares it as optional, both versions
+validate during the overlap window, and it becomes required no earlier than
+the next major.
+
+```json
+{
+  "name": "some-server",
+  "convention_version": "1.1.0",
+  "domain": "vcs",
+  "capabilities": ["df.describe", "df.vcs.open_pr"],
+  "requires": [],
+  "effective_config": { "repo": "acme/widgets" },
+  "extensions": {
+    "rate_limit_per_minute": 600
+  }
+}
+```
 
 **v0.1 → v0.2** renamed every convention tool into the `df.` root and made
 `df.describe` mandatory. v0.1's `workspace.describe` is not a `df.*` name

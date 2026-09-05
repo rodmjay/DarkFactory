@@ -86,6 +86,30 @@ services:
       timeout: 5s
       retries: 10
 
+  # The reference workspace server, in-network, serving a *copy* of this
+  # repository. Production workspace servers never run here — they run
+  # wherever the customer's code is, and README's "From another repo"
+  # documents that path via host.docker.internal. This service exists so the
+  # end-to-end demo does not depend on a host route that a firewall may
+  # block, and so a demo run cannot write into anyone's working tree.
+  workspace-demo:
+    build:
+      context: ./reference/workspace-mcp
+    volumes:
+      - ./:/seed:ro
+    environment:
+      PORT: 8931
+    ports:
+      - "8931:8931"
+    healthcheck:
+      # A workspace server exposes no HTTP health route of its own; the MCP
+      # endpoint answering 400 to a bodyless POST is proof enough that the
+      # process is up and listening.
+      test: ["CMD-SHELL", "node -e \"require('http').request({port:8931,path:'/mcp',method:'POST'},r=>process.exit(0)).on('error',()=>process.exit(1)).end()\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   dashboard:
     build:
       context: ./dashboard
