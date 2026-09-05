@@ -30,23 +30,44 @@ export const EDGE_KINDS = [
 ] as const;
 export type EdgeKind = (typeof EDGE_KINDS)[number];
 
+/**
+ * Why a change was made — `rationale` throughout this file.
+ *
+ * **Optional, never null.** Serialization drops nulls, so a change with no
+ * reason arrives as an *absent key* rather than `"rationale": null`. Three
+ * states are distinguishable on the wire and must not be collapsed:
+ *
+ *   absent            nobody gave a reason
+ *   ""                someone gave an empty one — the schema permits it
+ *                     (maxLength 2000, no minLength)
+ *   "…"               a reason
+ *
+ * `rationaleState()` is the one place that decides which is which, so the
+ * distinction cannot quietly rot into `if (rationale)`, which would fold the
+ * middle case into the first.
+ *
+ * Rationale is deliberately **not** part of the text a revision is hashed
+ * from: two people can agree on a rule and disagree about why, and that must
+ * not fork the revision. A revision whose reason changed but whose text did
+ * not is therefore not a new revision, and no history will ever show one.
+ */
 export interface SpecDiffCreate {
   kind: SpecKind;
   /** Open string — a customer's standards server declares its own layers. */
   layer: string;
   text: string;
-  rationale?: string | null;
+  rationale?: string;
 }
 
 export interface SpecDiffRevise {
   spec_id: string;
   text: string;
-  rationale?: string | null;
+  rationale?: string;
 }
 
 export interface SpecDiffRetire {
   spec_id: string;
-  rationale?: string | null;
+  rationale?: string;
 }
 
 export interface SpecDiffEdgeAdd {
@@ -54,12 +75,12 @@ export interface SpecDiffEdgeAdd {
   from_spec_id: string;
   to_spec_id: string;
   kind: EdgeKind | string;
-  rationale?: string | null;
+  rationale?: string;
 }
 
 export interface SpecDiffEdgeRetire {
   edge_id: string;
-  rationale?: string | null;
+  rationale?: string;
 }
 
 export interface SpecDiffDocument {
@@ -102,6 +123,33 @@ export interface SpecConflict {
   decided_at?: string;
 }
 
+/**
+ * One immutable revision of a node, as `df.specs.get` returns them —
+ * oldest first.
+ *
+ * `actor_id` and `approved_by` are separate fields and are not collapsed,
+ * even though they hold the same value today. Approval is single-actor now;
+ * ADR-0017 makes approvers configurable per project, so the day they differ
+ * is the day the distinction matters most, and a card that had merged them
+ * would be silently wrong rather than newly wrong.
+ *
+ * Every optional field here is absent-when-unset, not null — same
+ * serialization rule as `rationale`.
+ */
+export interface SpecRevision {
+  /** SHA-256 of the canonical content. Rationale is not part of it. */
+  hash: string;
+  text: string;
+  rationale?: string;
+  created_at: string;
+  /** Who proposed it. */
+  actor_id?: string;
+  /** Who approved it. Same as the proposer today; not always. */
+  approved_by?: string;
+  conversation_id?: string;
+  turn_id?: string;
+}
+
 /** A node as the graph holds it, for `SpecNodeCard`. */
 export interface SpecNode {
   spec_id: string;
@@ -117,4 +165,22 @@ export interface SpecNode {
    * prevented, so it is a state a node can be in rather than an error.
    */
   drifted?: boolean;
+  /** From `df.specs.get`, oldest first. Absent when only the node was fetched. */
+  revisions?: SpecRevision[];
+}
+
+/** What a `rationale` field is actually saying. */
+export type RationaleState = "absent" | "blank" | "given";
+
+/**
+ * The one place the three states are told apart.
+ *
+ * `if (rationale)` folds `""` into "nobody said why", which is a different
+ * fact: somebody was asked and left it empty. That is worth showing
+ * differently, because the fix is different — one is a missing prompt, the
+ * other is a person to go and ask.
+ */
+export function rationaleState(rationale: string | undefined | null): RationaleState {
+  if (rationale === undefined || rationale === null) return "absent";
+  return rationale.trim().length === 0 ? "blank" : "given";
 }

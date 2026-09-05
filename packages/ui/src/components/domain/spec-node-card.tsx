@@ -2,8 +2,10 @@ import * as React from "react";
 import { ArrowDownLeftIcon, ArrowUpRightIcon, TriangleAlertIcon } from "lucide-react";
 
 import { cn } from "../../lib/cn";
-import type { SpecNode } from "../../types/spec";
+import { at } from "../../lib/format";
+import type { SpecNode, SpecRevision } from "../../types/spec";
 import { LayerBadge } from "./layer-badge";
+import { Rationale } from "./rationale";
 import { SpecId } from "./spec-id";
 
 export interface SpecNodeCardProps extends React.ComponentProps<"div"> {
@@ -69,6 +71,10 @@ export function SpecNodeCard({ node, selected = false, className, ...props }: Sp
         {node.text}
       </p>
 
+      {node.revisions && node.revisions.length > 0 && (
+        <RevisionHistory revisions={node.revisions} current={node.revision_hash} />
+      )}
+
       {(node.edges || node.revision_hash) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted">
           {node.edges && (
@@ -91,5 +97,88 @@ export function SpecNodeCard({ node, selected = false, className, ...props }: Sp
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The node's revisions, oldest first, each with its own reason.
+ *
+ * Oldest first rather than newest first: a spec node's history is an argument
+ * that developed, and reading it backwards loses the sequence that makes the
+ * current text make sense. The current revision is marked rather than moved
+ * to the top.
+ *
+ * `actor_id` and `approved_by` are shown separately even though they hold the
+ * same value today. Approval is single-actor now; ADR-0017 makes approvers
+ * configurable per project, and the day they differ is the day the
+ * distinction matters most — a card that had merged them would be silently
+ * wrong rather than newly wrong.
+ *
+ * A revision whose reason changed but whose text did not will never appear
+ * here, and that is correct: rationale is not part of what a revision is
+ * hashed from, because two people can agree on a rule and disagree about why,
+ * and that must not fork the revision.
+ *
+ * Always visible, and deliberately not a `<details>`. A card only receives
+ * revisions on a detail view — a list passes none — so the history is the
+ * reason the card is being looked at, and putting it behind a disclosure
+ * makes the reader click to find out whether there is anything worth
+ * clicking for.
+ *
+ * It was a `<details open>` for one commit and that made the visual suite
+ * flaky: `open` is browser-managed state as well as a React attribute, and
+ * the two do not reliably agree across hydration, so the section rendered at
+ * two different heights between runs. Folding a long history is a real
+ * feature if it is ever needed; a disclosure that renders
+ * non-deterministically is not a substitute for one.
+ */
+function RevisionHistory({
+  revisions,
+  current,
+}: {
+  revisions: SpecRevision[];
+  current?: string;
+}) {
+  return (
+    <section className="border-t border-border pt-2">
+      <h4 className="text-2xs tracking-wide text-muted uppercase">
+        {revisions.length} revision{revisions.length === 1 ? "" : "s"}
+      </h4>
+
+      <ol className="mt-2 flex flex-col">
+        {revisions.map((revision, index) => {
+          const isCurrent = current !== undefined && revision.hash === current;
+          return (
+            <li
+              key={revision.hash}
+              className={cn(
+                "flex gap-2.5 border-l-2 py-1.5 pl-2.5",
+                isCurrent ? "border-accent-border" : "border-border",
+              )}
+            >
+              <span className="tnum mt-0.5 w-4 shrink-0 text-right text-2xs text-muted">
+                {index + 1}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <p className="text-sm text-primary">{revision.text}</p>
+                <Rationale rationale={revision.rationale} />
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted">
+                  <span
+                    className="font-mono"
+                    title="Content hash (SHA-256). Rationale is not part of it."
+                  >
+                    {revision.hash.slice(0, 8)}
+                  </span>
+                  <span className="tnum">{at(revision.created_at)}</span>
+                  {revision.actor_id && <span>proposed by {revision.actor_id}</span>}
+                  {revision.approved_by && <span>approved by {revision.approved_by}</span>}
+                  {isCurrent && <span className="text-accent-text">current</span>}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

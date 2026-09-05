@@ -283,6 +283,19 @@ export const manifest: DesignSystemManifest = {
       shape: "contracts/schemas/specdiff.schema.json",
     },
     {
+      component: "Rationale",
+      group: "domain",
+      summary: "Why a change was made. Three states, three renderings.",
+      props: [
+        { name: "rationale", type: "string | null | undefined", note: "Absent, empty, or a reason — all three render differently." },
+        { name: "hideWhenAbsent", type: "boolean" },
+      ],
+      states: ["given", "absent — 'No reason given.'", "blank — 'Reason left blank.'"],
+      shape: "contracts/schemas/specdiff.schema.json; ADR-0016 as amended",
+      constraint:
+        "Absent and empty must not collapse. Serialization drops nulls, so no reason arrives as a missing key; an empty string means somebody was asked and left it blank, which is the more actionable of the two. Never truncated — the reasons the architect writes run 150–250 characters and the second sentence is usually the half worth reading.",
+    },
+    {
       component: "SpecId",
       group: "domain",
       summary: "A ULID, truncated to the part that distinguishes it.",
@@ -314,11 +327,11 @@ export const manifest: DesignSystemManifest = {
       group: "domain",
       summary: "One small-grained spec node: id, layer badge, text, edge counts.",
       props: [
-        { name: "node", type: "SpecNode", required: true },
+        { name: "node", type: "SpecNode", required: true, note: "`revisions` renders the history from df.specs.get, oldest first." },
         { name: "selected", type: "boolean" },
       ],
-      states: ["default", "selected", "retired", "drifted"],
-      shape: "ADR-0016, ADR-0024",
+      states: ["default", "selected", "retired", "drifted", "with revision history"],
+      shape: "ADR-0016, ADR-0024; df.specs.get returns { node, revisions }",
       constraint:
         "The text is the subject and gets the size; id, layer and edge counts are apparatus. That ordering is the argument for small grain — a node you can read in one line is a node you can find a contradiction in.",
     },

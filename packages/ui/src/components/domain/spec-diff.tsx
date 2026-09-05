@@ -6,6 +6,7 @@ import { at } from "../../lib/format";
 import { diffBand, diffMarker } from "../../lib/vocabulary";
 import type { SpecConflict, SpecDiffDocument } from "../../types/spec";
 import { LayerBadge } from "./layer-badge";
+import { Rationale } from "./rationale";
 import { SpecId } from "./spec-id";
 
 export interface SpecDiffProps extends React.ComponentProps<"div"> {
@@ -116,20 +117,27 @@ export function SpecDiff({ diff, conflicts = [], summary, className, ...props }:
               <h4 className="text-2xs font-medium tracking-wide text-muted uppercase">
                 Edges
               </h4>
-              <ul className="mt-1.5 flex flex-col gap-1 font-mono text-2xs">
+              <ul className="mt-1.5 flex flex-col gap-2">
                 {diff.edge_adds.map((edge, index) => (
-                  <li key={`add-${index}`} className="flex items-center gap-1.5">
-                    <span className={cn("w-3 font-semibold", diffMarker.added)}>+</span>
-                    <span className="text-secondary">
-                      {edge.from_spec_id} <span className="text-muted">{edge.kind}</span>{" "}
-                      {edge.to_spec_id}
+                  <li key={`add-${index}`} className="flex flex-col gap-0.5">
+                    <span className="flex items-baseline gap-1.5 font-mono text-2xs">
+                      <span className={cn("w-3 shrink-0 font-semibold", diffMarker.added)}>+</span>
+                      <span className="text-secondary">
+                        <Endpoint reference={edge.from_spec_id} diff={diff} />{" "}
+                        <span className="text-muted">{edge.kind}</span>{" "}
+                        <Endpoint reference={edge.to_spec_id} diff={diff} />
+                      </span>
                     </span>
+                    <Rationale rationale={edge.rationale} className="pl-[1.125rem]" />
                   </li>
                 ))}
                 {diff.edge_retires.map((edge) => (
-                  <li key={`retire-${edge.edge_id}`} className="flex items-center gap-1.5">
-                    <span className={cn("w-3 font-semibold", diffMarker.removed)}>−</span>
-                    <span className="text-secondary line-through">{edge.edge_id}</span>
+                  <li key={`retire-${edge.edge_id}`} className="flex flex-col gap-0.5">
+                    <span className="flex items-baseline gap-1.5 font-mono text-2xs">
+                      <span className={cn("w-3 shrink-0 font-semibold", diffMarker.removed)}>−</span>
+                      <span className="text-secondary line-through">{edge.edge_id}</span>
+                    </span>
+                    <Rationale rationale={edge.rationale} className="pl-[1.125rem]" />
                   </li>
                 ))}
               </ul>
@@ -139,6 +147,44 @@ export function SpecDiff({ diff, conflicts = [], summary, className, ...props }:
       )}
     </div>
   );
+}
+
+/**
+ * An edge endpoint. `new:N` is a forward reference to `creates[N]` in this
+ * same diff — a node that has no id until approval assigns one.
+ *
+ * Rendered as the node it points at rather than as the literal, because
+ * "new:0 depends_on new:1" is not a sentence anyone can read, and the
+ * ordering decisions in ADR-0029 are made by reading exactly these lines.
+ */
+function Endpoint({ reference, diff }: { reference: string; diff: SpecDiffDocument }) {
+  const match = /^new:(\d+)$/.exec(reference);
+  if (!match) return <>{reference}</>;
+
+  const created = diff.creates[Number(match[1])];
+  if (!created) {
+    // A reference past the end of `creates` is a malformed diff, and saying
+    // so is more use than rendering a dangling literal.
+    return (
+      <span className={diffMarker.conflict} title="This diff has no such created node.">
+        {reference} (unresolved)
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="text-primary"
+      title={`${reference} — a node this amendment creates: ${created.text}`}
+    >
+      “{truncate(created.text, 34)}”
+      <span className="text-muted"> (new)</span>
+    </span>
+  );
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function Row({
@@ -154,7 +200,7 @@ function Row({
   layer?: string;
   badge?: string;
   text: string;
-  rationale?: string | null;
+  rationale?: string;
 }) {
   const band = kind === "created" ? "added" : kind === "retired" ? "removed" : "changed";
 
@@ -175,7 +221,9 @@ function Row({
           {badge && <span className="text-2xs opacity-70">{badge}</span>}
         </div>
         <p className={cn("text-sm text-primary", kind === "retired" && "line-through")}>{text}</p>
-        {rationale && <p className="text-xs opacity-80">{rationale}</p>}
+        {/* Always rendered. "No reason given" on a retirement is itself
+            information — it is the change most likely to need one. */}
+        <Rationale rationale={rationale} />
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ export * as format from "./lib/format";
 export type * from "./types/spec";
 export type * from "./types/run";
 export type * from "./types/payload";
-export { SPEC_KINDS, EDGE_KINDS } from "./types/spec";
+export { SPEC_KINDS, EDGE_KINDS, rationaleState } from "./types/spec";
 export { RUN_STAGES, BATCH_STATUSES, SPEED_PRESETS, SERVER_TIERS, SYNC_STATES } from "./types/run";
 export { PAYLOAD_TYPES } from "./types/payload";
 
@@ -53,6 +53,7 @@ export * from "./components/domain/metric-tile";
 export * from "./components/domain/payload-renderer";
 export * from "./components/domain/persona-card";
 export * from "./components/domain/provenance-popover";
+export * from "./components/domain/rationale";
 export * from "./components/domain/server-card";
 export * from "./components/domain/spec-diff";
 export * from "./components/domain/spec-id";

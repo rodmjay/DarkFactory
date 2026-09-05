@@ -155,6 +155,48 @@ export const specNodes: Record<string, SpecNode> = {
     revision_hash: "3a71bd94ee20c5f81b7a44d0c9e6f2183bb0d7c4e51928af",
     edges: { outgoing: 4, incoming: 2 },
   },
+  // df.specs.get returns { node, revisions }, oldest first. All three
+  // rationale states appear, because all three arrive on the wire.
+  withHistory: {
+    spec_id: SPEC_ID_B,
+    kind: "rule",
+    layer: "product",
+    text: "A subscription renewal is blocked while the owning account is delinquent.",
+    revision_hash: "e28b7eb5c1904f3a77d0b2ee615c8a4419fd0c73b2e5a681",
+    edges: { outgoing: 4, incoming: 2 },
+    revisions: [
+      {
+        hash: "1f04c9a7b83e5d2160fa47cc90b1e8d3a5027e4f61bc9d08",
+        text: "Renewal is blocked if the account is delinquent.",
+        rationale:
+          "Finance asked for this after renewals were charged to accounts already in dunning. The charge succeeds and the refund lands in a different month, which is what makes it expensive.",
+        created_at: "2026-03-14T10:22:00Z",
+        actor_id: "architect",
+        approved_by: "rod",
+        conversation_id: "01M1ST3R9AK5N8KR6MGFFWCSD4",
+        turn_id: "01M1ST3RCMYAGP8A8YB78BJ97B",
+      },
+      {
+        hash: "7bd90ea1cc3f28b5104d6ea72f9c0b31d84e5a6072fb1c93",
+        text: "Renewal is blocked if the account is delinquent at the time renewal is attempted.",
+        // Absent: the wire sends no key at all when nobody gave a reason.
+        created_at: "2026-06-02T09:05:00Z",
+        actor_id: "architect",
+        approved_by: "rod",
+      },
+      {
+        hash: "e28b7eb5c1904f3a77d0b2ee615c8a4419fd0c73b2e5a681",
+        text: "A subscription renewal is blocked while the owning account is delinquent.",
+        rationale:
+          "30 days after due date is the assumed grace window; confirm before this is built on. Renamed to say 'owning account' because a subscription and its payer are not always the same record.",
+        created_at: "2026-09-05T22:13:28Z",
+        actor_id: "org_local",
+        approved_by: "org_local",
+        conversation_id: "01M1ST3R9AK5N8KR6MGFFWCSD4",
+        turn_id: "01M1ST3RCMYAGP8A8YB78BJ97B",
+      },
+    ],
+  },
   retired: {
     spec_id: SPEC_ID_C,
     kind: "rule",
@@ -180,21 +222,33 @@ export const specDiff: SpecDiffDocument = {
       kind: "interface",
       layer: "api",
       text: "GET /health/detailed responds with the current reachability of the database connection.",
-      rationale: "Uptime probes need a signal that distinguishes 'process up' from 'usable'.",
+      rationale:
+        "Operators need a signal that distinguishes process liveness from database connectivity. A load balancer that only knows the process is up will keep routing to an instance that cannot serve a request.",
     },
   ],
   revises: [
     {
       spec_id: SPEC_ID_B,
       text: "Renewal is blocked if the account is delinquent at the time renewal is attempted.",
-      rationale: "The original left the evaluation time open, and billing and renewal disagreed.",
+      rationale:
+        "30 days after due date is the assumed grace window; confirm before this is built on. The original left evaluation time open and billing and renewal disagreed about it.",
     },
   ],
-  retires: [{ spec_id: SPEC_ID_C, rationale: "Superseded by the revised rule above." }],
+  // No rationale at all — the absent-key case, which is what the wire sends
+  // when nobody gave a reason.
+  retires: [{ spec_id: SPEC_ID_C }],
   edge_adds: [
-    { from_spec_id: "new:0", to_spec_id: SPEC_ID_B, kind: "depends_on" },
+    {
+      from_spec_id: "new:0",
+      to_spec_id: SPEC_ID_B,
+      kind: "depends_on",
+      rationale:
+        "The health endpoint reports on the same billing ledger the renewal rule reads; if that rule moves, this reports on the wrong thing.",
+    },
   ],
-  edge_retires: [{ edge_id: "e-0194ab", rationale: "The node it pointed at is retired." }],
+  // An empty reason: somebody was asked and left it blank, which is not the
+  // same fact as nobody being asked.
+  edge_retires: [{ edge_id: "e-0194ab", rationale: "" }],
 };
 
 export const emptyDiff: SpecDiffDocument = {

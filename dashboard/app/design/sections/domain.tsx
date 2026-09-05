@@ -84,6 +84,16 @@ export function DomainComponents() {
             <ProvenancePopover provenance={fixture.provenance} />
           </div>
         </Frame>
+        <Frame label="revision history — oldest first, each with its own reason">
+          <SpecNodeCard node={fixture.specNodes.withHistory} />
+        </Frame>
+        <p className="text-2xs text-muted">
+          Three revisions, three rationale states: a reason, none at all, and the current one.
+          `actor_id` and `approved_by` stay separate even where they match — approval is
+          single-actor today and ADR-0017 makes approvers configurable per project. A revision
+          whose reason changed but whose text did not will never appear, because rationale is
+          not part of what a revision is hashed from.
+        </p>
       </Block>
 
       <Block
@@ -105,6 +115,16 @@ export function DomainComponents() {
             <SpecDiff diff={fixture.emptyDiff} />
           </Frame>
         </div>
+        <p className="text-2xs text-muted">
+          Every element and every edge change carries its reason. The three states are
+          distinguishable and deliberately do not collapse: a reason, “No reason given” where
+          the key is absent, and “Reason left blank” where someone was asked and left it empty —
+          the second means a prompt that never asked, the third means a person to go and ask.
+          Reasons are never truncated; the ones the architect writes run 150–250 characters and
+          the second sentence is usually the half worth reading. The edge line resolves{" "}
+          <code className="font-mono">new:0</code> to the node this amendment creates, because
+          “new:0 depends_on new:1” is not a sentence anyone can read.
+        </p>
       </Block>
 
       <Block
