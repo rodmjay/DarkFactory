@@ -31,10 +31,26 @@ public static class MigrationRunner
             .ToList();
     }
 
+    /// <summary>
+    /// Read-only. If the tracking table doesn't exist yet, that means
+    /// nothing has been migrated, which is an answer — not a reason to
+    /// create it. `factory` and `worker` reach this path (via SchemaGuard)
+    /// connected as the restricted application role, which has no CREATE
+    /// privilege on the schema and should not: a process whose whole job is
+    /// to refuse to run against an unfamiliar schema must not be capable of
+    /// modifying one.
+    /// </summary>
     public static async Task<IReadOnlySet<string>> GetAppliedVersionsAsync(
         NpgsqlConnection connection, CancellationToken cancellationToken = default)
     {
-        await EnsureMigrationsTableAsync(connection, cancellationToken);
+        await using (var exists = new NpgsqlCommand("SELECT to_regclass(@table) IS NOT NULL", connection))
+        {
+            exists.Parameters.AddWithValue("table", TableName);
+            if (await exists.ExecuteScalarAsync(cancellationToken) is not true)
+            {
+                return new HashSet<string>();
+            }
+        }
 
         await using var command = new NpgsqlCommand($"SELECT version FROM {TableName}", connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -58,6 +74,10 @@ public static class MigrationRunner
     public static async Task<IReadOnlyList<string>> ApplyPendingAsync(
         NpgsqlConnection connection, CancellationToken cancellationToken = default)
     {
+        // The only caller is DarkFactory.Migrate, connected as the owner —
+        // so this is the only place the tracking table gets created.
+        await EnsureMigrationsTableAsync(connection, cancellationToken);
+
         var pending = await GetPendingVersionsAsync(connection, cancellationToken);
 
         foreach (var version in pending)

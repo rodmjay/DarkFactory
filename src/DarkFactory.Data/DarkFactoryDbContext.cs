@@ -16,6 +16,24 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
     public DbSet<Event> Events => Set<Event>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
+    // docs/adr/0016, docs/adr/0017 (the spec graph and the conversation it grows from).
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<Turn> Turns => Set<Turn>();
+    public DbSet<SpecNode> SpecNodes => Set<SpecNode>();
+    public DbSet<SpecRevision> SpecRevisions => Set<SpecRevision>();
+    public DbSet<SpecEdge> SpecEdges => Set<SpecEdge>();
+    public DbSet<SpecSnapshot> SpecSnapshots => Set<SpecSnapshot>();
+    public DbSet<SnapshotMember> SnapshotMembers => Set<SnapshotMember>();
+    public DbSet<SnapshotEdge> SnapshotEdges => Set<SnapshotEdge>();
+    public DbSet<Amendment> Amendments => Set<Amendment>();
+    public DbSet<Approval> Approvals => Set<Approval>();
+    public DbSet<Provenance> Provenance => Set<Provenance>();
+
+    // docs/adr/0018 (servers) and docs/adr/0023 (standards index) — schema
+    // only in this slice; df.servers.register and indexing are step 3b+.
+    public DbSet<Server> Servers => Set<Server>();
+    public DbSet<StandardsIndexEntry> StandardsIndex => Set<StandardsIndexEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Project>(e =>
@@ -54,6 +72,9 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.HasIndex(r => new { r.Status, r.LeaseExpiresAt });
             e.HasOne<Project>().WithMany().HasForeignKey(r => r.ProjectId);
             e.HasOne<WorkItem>().WithMany().HasForeignKey(r => r.WorkItemId);
+            // docs/adr/0004 (amended): nullable until step 3c's df.work.create
+            // actually seeds runs from a snapshot.
+            e.HasOne<SpecSnapshot>().WithMany().HasForeignKey(r => r.SnapshotId).IsRequired(false);
         });
 
         modelBuilder.Entity<StageCheckpoint>(e =>
@@ -104,6 +125,128 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.HasIndex(a => new { a.ProjectId, a.RunId });
             e.HasOne<Project>().WithMany().HasForeignKey(a => a.ProjectId);
             e.HasOne<Run>().WithMany().HasForeignKey(a => a.RunId);
+        });
+
+        ConfigureSpecGraph(modelBuilder);
+    }
+
+    private static void ConfigureSpecGraph(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Conversation>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Status).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(c => c.ProjectId);
+            e.HasOne<Project>().WithMany().HasForeignKey(c => c.ProjectId);
+        });
+
+        modelBuilder.Entity<Turn>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Role).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(t => new { t.ConversationId, t.Seq }).IsUnique();
+            e.HasOne<Conversation>().WithMany().HasForeignKey(t => t.ConversationId);
+        });
+
+        modelBuilder.Entity<Provenance>(e =>
+        {
+            e.HasKey(p => p.Id);
+            e.Property(p => p.ActorType).HasConversion<string>().HasMaxLength(16);
+            // Optional: a snapshot's or a directly-authored revision's
+            // provenance may not trace to a conversation/turn at all.
+            e.HasOne<Conversation>().WithMany().HasForeignKey(p => p.ConversationId).IsRequired(false);
+            e.HasOne<Turn>().WithMany().HasForeignKey(p => p.TurnId).IsRequired(false);
+        });
+
+        modelBuilder.Entity<SpecNode>(e =>
+        {
+            e.HasKey(n => n.SpecId);
+            e.Property(n => n.SpecId).HasMaxLength(26);
+            e.HasIndex(n => new { n.ProjectId, n.Layer });
+            e.HasOne<Project>().WithMany().HasForeignKey(n => n.ProjectId);
+        });
+
+        modelBuilder.Entity<SpecRevision>(e =>
+        {
+            // Content-addressed, keyed by (SpecId, Hash): identical content
+            // for the same node is the same row (docs/adr/0016); the
+            // database enforces immutability by revoking UPDATE/DELETE on
+            // this table from the application role entirely — see
+            // Migrations/0002_spec_graph.sql.
+            e.HasKey(r => new { r.SpecId, r.Hash });
+            e.Property(r => r.Hash).HasMaxLength(64);
+            e.HasOne<SpecNode>().WithMany().HasForeignKey(r => r.SpecId);
+            e.HasOne<Provenance>().WithMany().HasForeignKey(r => r.ProvenanceId);
+        });
+
+        modelBuilder.Entity<SpecEdge>(e =>
+        {
+            e.HasKey(edge => edge.Id);
+            e.HasIndex(edge => new { edge.ProjectId, edge.FromSpecId });
+            e.HasIndex(edge => new { edge.ProjectId, edge.ToSpecId });
+            e.HasOne<Project>().WithMany().HasForeignKey(edge => edge.ProjectId);
+            e.HasOne<SpecNode>().WithMany().HasForeignKey(edge => edge.FromSpecId);
+            e.HasOne<SpecNode>().WithMany().HasForeignKey(edge => edge.ToSpecId);
+            e.HasOne<Provenance>().WithMany().HasForeignKey(edge => edge.ProvenanceId);
+        });
+
+        modelBuilder.Entity<SpecSnapshot>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => new { s.ProjectId, s.Name });
+            e.HasOne<Project>().WithMany().HasForeignKey(s => s.ProjectId);
+            e.HasOne<Provenance>().WithMany().HasForeignKey(s => s.ProvenanceId);
+        });
+
+        modelBuilder.Entity<SnapshotMember>(e =>
+        {
+            e.HasKey(m => new { m.SnapshotId, m.SpecId });
+            e.HasOne<SpecSnapshot>().WithMany().HasForeignKey(m => m.SnapshotId);
+            // Deliberately no FK to SpecRevision: a member pins (SpecId,
+            // RevisionHash) as a value pair, not a navigable relationship —
+            // the pair is looked up directly when resolving a snapshot.
+        });
+
+        modelBuilder.Entity<SnapshotEdge>(e =>
+        {
+            e.HasKey(m => new { m.SnapshotId, m.EdgeId });
+            e.HasOne<SpecSnapshot>().WithMany().HasForeignKey(m => m.SnapshotId);
+            e.HasOne<SpecEdge>().WithMany().HasForeignKey(m => m.EdgeId);
+        });
+
+        modelBuilder.Entity<Amendment>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.Status).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(a => new { a.ProjectId, a.Status });
+            e.HasOne<Project>().WithMany().HasForeignKey(a => a.ProjectId);
+            e.HasOne<Conversation>().WithMany().HasForeignKey(a => a.ConversationId);
+            e.HasOne<Turn>().WithMany().HasForeignKey(a => a.TurnId).IsRequired(false);
+        });
+
+        modelBuilder.Entity<Approval>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.TargetType).HasConversion<string>().HasMaxLength(16);
+            e.Property(a => a.Decision).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(a => new { a.TargetType, a.TargetId });
+            // No FK on (TargetType, TargetId): it's polymorphic (amendment
+            // or gate), which a single-table foreign key can't express.
+        });
+
+        modelBuilder.Entity<Server>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Tier).HasConversion<string>().HasMaxLength(16);
+            e.Property(s => s.Status).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(s => s.OrgId);
+        });
+
+        modelBuilder.Entity<StandardsIndexEntry>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => new { s.ServerId, s.Layer });
+            e.HasOne<Server>().WithMany().HasForeignKey(s => s.ServerId);
         });
     }
 }

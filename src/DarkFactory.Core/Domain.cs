@@ -44,6 +44,14 @@ public sealed class Run
     public string? LeasedBy { get; set; }
     public DateTimeOffset? LeaseExpiresAt { get; set; }
 
+    // docs/adr/0004 (amended): a run records the spec snapshot it was built
+    // against, seeded from the amendment(s) that produced it. Populated
+    // once df.work.create exists (step 3c) — nullable until then since
+    // every run created up to and including step 2 predates the spec
+    // graph entirely.
+    public string? SnapshotId { get; set; }
+    public string[]? AmendmentIds { get; set; }
+
     public required DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

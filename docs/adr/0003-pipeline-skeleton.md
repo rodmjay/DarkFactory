@@ -1,7 +1,27 @@
 # ADR-0003: Pipeline skeleton and human gates
 
 ## Status
-Accepted
+Accepted, amended by the [architecture brief v2](../architecture-brief.md)
+
+## Amendment (v2)
+`intake` and `spec` are removed from the run pipeline. They are the
+conversation ([ADR-0017](0017-conversation-is-the-product.md)) — an ongoing
+exchange with an architect agent that produces, when it settles, a proposed
+amendment against the spec graph ([ADR-0016](0016-spec-graph-content-addressed-append-only.md)).
+A run is created only from one or more *approved* amendments, never from
+raw text. The pipeline a run actually executes is now:
+
+```
+conversation -> spec amendment (gate) -> plan -> implement -> verify -> ship
+```
+
+where "conversation" and "spec amendment (gate)" happen before a run
+exists at all — the run itself starts at `plan`. The PR-approval gate
+before `ship` is unchanged. Everything below this point is the original
+(v1) decision, kept for its rationale on hook points and gate mechanics,
+which still apply to `plan -> implement -> verify -> ship`.
+
+## Original decision (v1, six-stage run)
 
 ## Context
 Every unit of work the factory carries out needs a predictable shape so the

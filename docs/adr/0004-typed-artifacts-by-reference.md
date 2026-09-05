@@ -1,7 +1,19 @@
 # ADR-0004: Typed artifacts, passed by reference
 
 ## Status
-Accepted
+Accepted, amended by the [architecture brief v2](../architecture-brief.md)
+
+## Amendment (v2)
+`Spec` is no longer a run artifact. Specs are durable project state living
+in the spec graph ([ADR-0016](0016-spec-graph-content-addressed-append-only.md)),
+not something a stage produces and the engine validates per run. `Plan`,
+`ChangeSet`, and `TestReport` remain exactly as below. A run additionally
+records the **spec snapshot** (`snapshot_id`) it was built against —
+the immutable set of spec revisions in effect when the run's seeding
+amendment(s) were approved — so "what was the run actually building
+towards" is always answerable later even as the graph keeps evolving.
+
+## Original decision (v1)
 
 ## Context
 Stages produce and consume documents — a spec, a plan, a diff, a test
@@ -14,6 +26,10 @@ Four artifact types are defined as JSON Schemas under
 `contracts/schemas/`: `Spec`, `Plan`, `ChangeSet`, `TestReport`. Every
 artifact produced by a stage is validated against its schema before the
 engine persists it and advances the run.
+
+(Per the amendment above, `Spec` is retired as a *run* artifact in v2 — its
+schema stays in `contracts/schemas/` as the shape a spec node's canonical
+content takes in the graph, not as something `df.work.*` produces per run.)
 
 Artifacts are passed between calls **by reference** (`artifact_ref`, an
 opaque id resolvable through the factory's artifact store), not inline.

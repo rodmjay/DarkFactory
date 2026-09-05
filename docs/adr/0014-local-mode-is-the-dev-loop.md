@@ -1,7 +1,17 @@
 # ADR-0014: Local mode is the dev loop, not the product
 
 ## Status
-Accepted
+Accepted, extended by [ADR-0025](0025-identity-tenancy-deployment-modes.md)
+
+## Extension (v2)
+This ADR's prediction in its last consequence held: hosted mode
+([ADR-0025](0025-identity-tenancy-deployment-modes.md),
+[ADR-0026](0026-hosting.md)) reuses the same image and schema Compose
+already builds. Hosted is now the default product, not a someday target —
+identity carries user+org, org owns projects/subscriptions, and a
+self-hosted variant of this same image exists for customers whose project
+servers our cloud can't reach. Local Compose remains exactly what this ADR
+describes: the dev loop, unauthenticated, one factory per machine.
 
 ## Context
 We need a concrete, runnable target for this first slice, but we don't want

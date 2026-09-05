@@ -1,7 +1,15 @@
 # ADR-0009: The factory owns model access
 
 ## Status
-Accepted
+Accepted, extended by [ADR-0022](0022-model-assignment-is-policy.md)
+
+## Extension (v2)
+This ADR settled *that* the factory holds its own model access.
+[ADR-0022](0022-model-assignment-is-policy.md) settles *which* model
+handles which stage or task: a per-project, per-plan policy
+(`agent_policies`) keyed on verifiability of outcome, not a hardcoded model
+name per stage. Read that ADR alongside this one for the current model
+story; nothing below is contradicted, only made configurable.
 
 ## Context
 Hosts connecting to the factory (Claude Code, Cursor, CI) are themselves

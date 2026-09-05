@@ -37,7 +37,19 @@ This brings up:
 `factory` and `worker` both depend on `migrate` completing successfully
 first, and each refuses to start on its own if the database's applied
 migrations don't cover everything this build ships (`SchemaGuard`) — neither
-one ever migrates the schema itself. `postgres`, `factory`, `worker`, and
+one ever migrates the schema itself.
+
+They also connect as a **different database role** than `migrate` does.
+`migrate` owns the tables; `factory` and `worker` connect as
+`darkfactory_app`, which owns nothing, cannot create anything, and has no
+`UPDATE` grant on the append-only spec tables. This is not belt-and-braces:
+a Postgres table owner bypasses its own `GRANT`/`REVOKE`, so
+"`spec_revisions` is immutable" would mean nothing at all if the
+application connected as the owner. `migrate` provisions the role's
+password from `APP_DB_PASSWORD` (see `.env.example` and
+`src/DarkFactory.Data/AppRole.cs`).
+
+`postgres`, `factory`, `worker`, and
 `dashboard` all report a Docker health check; `docker compose ps` should
 show `healthy` for each once they're up. `factory`/`worker` expose
 `GET /health` (liveness) and `GET /health/ready` (readiness — checks
@@ -153,3 +165,8 @@ To add a schema change: write a new `NNNN_description.sql` file there (next
 version number, zero-padded), update `DarkFactoryDbContext`'s
 `OnModelCreating` to match, and run `DarkFactory.Migrate` to apply it.
 `factory`/`worker` will refuse to start until you do (`SchemaGuard`).
+
+New tables inherit the application role's grants automatically (0002 sets
+`ALTER DEFAULT PRIVILEGES`), but **not** the revocations. A new append-only
+table has to `REVOKE UPDATE, DELETE ... FROM darkfactory_app` explicitly, in
+the same migration that creates it.

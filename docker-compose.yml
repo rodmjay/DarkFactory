@@ -20,6 +20,10 @@ services:
   # `factory`/`worker` never migrate on startup — they only verify the
   # schema is current (SchemaGuard) and refuse to start otherwise, so this
   # has to complete successfully before either comes up.
+  # This is the only service that gets the owner credentials. It is also
+  # what provisions the restricted role's login (src/DarkFactory.Data/AppRole.cs):
+  # `factory` and `worker` below connect as darkfactory_app, which has no
+  # UPDATE grant on the append-only spec tables.
   migrate:
     build:
       context: .
@@ -27,6 +31,7 @@ services:
     command: ["/app/migrate/DarkFactory.Migrate.dll"]
     environment:
       ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=${POSTGRES_USER:-darkfactory};Password=${POSTGRES_PASSWORD:-darkfactory}"
+      DARKFACTORY_APP_PASSWORD: ${APP_DB_PASSWORD:-darkfactory_app}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,7 +44,7 @@ services:
     ports:
       - "5100:8080"
     environment:
-      ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=${POSTGRES_USER:-darkfactory};Password=${POSTGRES_PASSWORD:-darkfactory}"
+      ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=darkfactory_app;Password=${APP_DB_PASSWORD:-darkfactory_app}"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
@@ -59,7 +64,7 @@ services:
       dockerfile: src/Dockerfile
     command: ["/app/engine/DarkFactory.Engine.dll"]
     environment:
-      ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=${POSTGRES_USER:-darkfactory};Password=${POSTGRES_PASSWORD:-darkfactory}"
+      ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=darkfactory_app;Password=${APP_DB_PASSWORD:-darkfactory_app}"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
