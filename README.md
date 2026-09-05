@@ -201,6 +201,31 @@ flow, the relay/tunnel for hosted mode, Temporal (see
 would trigger adopting it), real theme/plugin servers, the IDE extension,
 and deploy hooks.
 
+## Before you commit to main
+
+```sh
+scripts/check-stack.sh
+```
+
+It builds every Compose service from an empty volume and waits for all of
+them to report healthy. **No session commits to main without it passing.**
+
+This exists because more than one session works in this repository at once,
+in separate worktrees, and each naturally builds only the part it is
+changing. Nobody builds the whole stack — so when one session retires a
+dependency another service still expects, `docker compose up --build` breaks
+on main while every test suite stays green, and the next person to notice is
+someone unrelated halfway through something else. That is not hypothetical;
+it is how this check came to be written.
+
+The unit and integration suites do not cover it: they test the code, and
+this tests that the thing a new contributor is told to run in step 1
+actually runs.
+
+```sh
+scripts/demo-3d.sh     # the step 3d acceptance demo, writing docs/evidence/3d/
+```
+
 ## Development
 
 ```sh
