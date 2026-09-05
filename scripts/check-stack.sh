@@ -39,6 +39,28 @@ cleanup() {
     fi
 }
 
+# ---------------------------------------------------------------------------
+# Credentials, before anything expensive
+# ---------------------------------------------------------------------------
+#
+# First because it takes about four seconds, and because it is the one
+# failure here that nothing else can compensate for: a stack that comes up
+# perfectly with a key in its history is not publishable. Aborting rather
+# than folding into the summary at the end, so the message is the last thing
+# on screen instead of being buried under five minutes of Docker output.
+#
+# scripts/hooks/pre-push runs the same script, for anyone who has enabled it
+# (git config core.hooksPath scripts/hooks). Both, deliberately: the hook is
+# opt-in per clone and so cannot be relied on, and this script is the gate
+# the README already requires before committing to main.
+if [ -x "$(dirname "$0")/check-secrets.sh" ]; then
+    say "Credentials"
+    if ! "$(dirname "$0")/check-secrets.sh" | sed 's/^/  /'; then
+        printf '\n\033[31mStopping before the stack check — fix this first.\033[0m\n' >&2
+        exit 1
+    fi
+fi
+
 # Every service Compose knows about, so adding one to docker-compose.yml
 # automatically adds it to this check rather than requiring someone to
 # remember a second list.
