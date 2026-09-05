@@ -219,6 +219,12 @@ it does not work, and a standalone server without its static copy returns
 200 with a clean log and a blank white page. Each assertion exists because
 the one before it went green on a broken thing.
 
+Which is the repo's rule about checks generally: **no check counts until it
+has been shown to fail against planted breakage.** See
+[docs/TESTING.md](docs/TESTING.md) for the rule, the evidence behind it, and
+the four steps. [SESSIONS.md](SESSIONS.md) covers who owns what while several
+sessions are working here at once.
+
 If it reports a host port collision, that is this machine and not the code:
 every published port is configurable, so set `POSTGRES_PORT`, `FACTORY_PORT`,
 `DASHBOARD_PORT` or `WORKSPACE_DEMO_PORT` in `.env` and re-run. Services
