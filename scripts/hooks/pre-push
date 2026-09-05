@@ -18,14 +18,25 @@ set -uo pipefail
 
 repo=$(git rev-parse --show-toplevel)
 
-if [ ! -x "$repo/scripts/check-secrets.sh" ]; then
-    printf '\033[33mpre-push: scripts/check-secrets.sh is missing — pushing unscanned.\033[0m\n' >&2
-    exit 0
+# Fails closed. An earlier version warned and exited 0 when the script was
+# missing, which disarms the gate exactly when something is wrong with the
+# checkout — a lost exec bit, a bad merge, a stale worktree — and does it
+# silently enough to be missed in the noise of a push. A gate that lets a
+# push through because it could not run is not a gate.
+#
+# Invoked through bash rather than executed, so that a missing exec bit
+# (a fresh clone on a filesystem without one, say) scans instead of
+# refusing. Absence is a refusal; a permission bit is not.
+if [ ! -f "$repo/scripts/check-secrets.sh" ]; then
+    printf '\n\033[31mPush refused: scripts/check-secrets.sh is missing, so nothing scanned\n' >&2
+    printf 'this push for credentials.\033[0m\n\n' >&2
+    printf 'Restore it, or push with --no-verify if you have scanned another way.\n' >&2
+    exit 1
 fi
 
 printf '\033[1mpre-push: scanning for credentials\033[0m\n' >&2
 
-if "$repo/scripts/check-secrets.sh" >&2; then
+if bash "$repo/scripts/check-secrets.sh" >&2; then
     exit 0
 fi
 

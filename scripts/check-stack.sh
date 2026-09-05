@@ -53,12 +53,17 @@ cleanup() {
 # (git config core.hooksPath scripts/hooks). Both, deliberately: the hook is
 # opt-in per clone and so cannot be relied on, and this script is the gate
 # the README already requires before committing to main.
-if [ -x "$(dirname "$0")/check-secrets.sh" ]; then
-    say "Credentials"
-    if ! "$(dirname "$0")/check-secrets.sh" | sed 's/^/  /'; then
-        printf '\n\033[31mStopping before the stack check — fix this first.\033[0m\n' >&2
-        exit 1
-    fi
+say "Credentials"
+if [ ! -f "$(dirname "$0")/check-secrets.sh" ]; then
+    # Not skipped when absent. Skipping is how a gate disappears: the run
+    # stays green, the missing scan looks identical to a clean one, and the
+    # first anyone knows is after a push.
+    fail "scripts/check-secrets.sh is missing — nothing scanned for credentials."
+    exit 1
+fi
+if ! bash "$(dirname "$0")/check-secrets.sh" | sed 's/^/  /'; then
+    printf '\n\033[31mStopping before the stack check — fix this first.\033[0m\n' >&2
+    exit 1
 fi
 
 # Every service Compose knows about, so adding one to docker-compose.yml
