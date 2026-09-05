@@ -240,8 +240,9 @@ because a scanner that has quietly stopped matching is indistinguishable
 from a clean repository — and the first version of it had exactly that
 fault, with a canary the rule never matched. See
 [docs/TESTING.md](docs/TESTING.md) for the rule, the evidence behind it, and
-the four steps. [SESSIONS.md](SESSIONS.md) covers who owns what while several
-sessions are working here at once.
+the four steps. [docs/SESSIONS.md](docs/SESSIONS.md) covers how the builder
+and the reviewing architect hand work back and forth, and
+[CLAUDE.md](CLAUDE.md) is the contract every session starts from.
 
 If it reports a host port collision, that is this machine and not the code:
 every published port is configurable, so set `POSTGRES_PORT`, `FACTORY_PORT`,
