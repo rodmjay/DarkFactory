@@ -1,0 +1,18 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Node / Next.js
+node_modules/
+.next/
+dist/
+npm-debug.log*
+
+# Env
+.env
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

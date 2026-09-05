@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/changeset.schema.json",
+  "title": "ChangeSet",
+  "description": "The artifact produced by the implement stage: a concrete diff applied (or to be applied) to the workspace, plus VCS bookkeeping. See ADR-0004.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "plan_artifact_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Reference to the Plan this change implements."
+    },
+    "branch": { "type": "string", "minLength": 1 },
+    "patch_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Artifact reference to the unified diff / patch content. Large; never inlined."
+    },
+    "files_changed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "commit_sha": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "Populated once vcs.commit has run."
+    },
+    "commit_message": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["artifact_id", "run_id", "plan_artifact_ref", "branch", "patch_ref", "files_changed", "commit_message", "created_at"]
+}

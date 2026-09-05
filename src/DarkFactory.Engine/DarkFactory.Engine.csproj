@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DarkFactory.Engine</RootNamespace>
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DarkFactory.Core\DarkFactory.Core.csproj" />
+    <ProjectReference Include="..\DarkFactory.Contracts\DarkFactory.Contracts.csproj" />
+    <ProjectReference Include="..\DarkFactory.Data\DarkFactory.Data.csproj" />
+    <ProjectReference Include="..\DarkFactory.Client\DarkFactory.Client.csproj" />
+  </ItemGroup>
+
+</Project>

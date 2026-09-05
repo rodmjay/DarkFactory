@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/envelope.schema.json",
+  "title": "Envelope",
+  "description": "The call envelope attached to every outbound Dark Factory tool call. See docs/conventions/envelope.md and ADR-0005.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The run this call is part of."
+    },
+    "stage_id": {
+      "type": "string",
+      "enum": ["intake", "spec", "plan", "implement", "verify", "ship"],
+      "description": "The pipeline stage currently executing."
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The project the run belongs to."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable per logical attempt; lets a callee dedupe retried calls."
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "W3C trace-context compatible trace identifier."
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp after which the caller treats the call as timed out."
+    },
+    "callback_token": {
+      "type": "string",
+      "description": "Signed token to use when POSTing async job completion back to /webhooks/jobs/{job_id}. Present only on calls the factory expects may go async."
+    }
+  },
+  "required": ["run_id", "stage_id", "project_id", "idempotency_key", "trace_id", "deadline"]
+}

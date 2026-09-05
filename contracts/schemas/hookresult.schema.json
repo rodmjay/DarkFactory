@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/hookresult.schema.json",
+  "title": "HookResult",
+  "description": "The result shape returned by hook points and convention tool calls. See docs/conventions/envelope.md and ADR-0007.",
+  "type": "object",
+  "properties": {
+    "envelope": { "$ref": "envelope.schema.json" },
+    "ok": {
+      "type": "boolean",
+      "description": "True on success. When false, failure_class and message are required."
+    },
+    "failure_class": {
+      "type": "string",
+      "enum": ["retryable", "permanent", "needs_human"],
+      "description": "Required when ok is false. Drives the engine's retry policy (ADR-0007, ADR-0008)."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable explanation, required when ok is false."
+    },
+    "job_id": {
+      "type": "string",
+      "description": "Present instead of a final result when the call has gone async (docs/conventions/envelope.md#async-jobs)."
+    }
+  },
+  "required": ["envelope", "ok"],
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": false } } },
+      "then": { "required": ["envelope", "ok", "failure_class", "message"] }
+    }
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-darkfactory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-darkfactory}
+      POSTGRES_DB: ${POSTGRES_DB:-darkfactory}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-darkfactory} -d ${POSTGRES_DB:-darkfactory}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  factory:
+    build:
+      context: .
+      dockerfile: src/Dockerfile
+    ports:
+      - "5100:8080"
+    environment:
+      ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=${POSTGRES_USER:-darkfactory};Password=${POSTGRES_PASSWORD:-darkfactory}"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/Dockerfile
+    command: ["/app/engine/DarkFactory.Engine.dll"]
+    environment:
+      ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=${POSTGRES_USER:-darkfactory};Password=${POSTGRES_PASSWORD:-darkfactory}"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      factory:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  dashboard:
+    build:
+      context: ./dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      FACTORY_API_URL: "http://factory:8080"
+    depends_on:
+      factory:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

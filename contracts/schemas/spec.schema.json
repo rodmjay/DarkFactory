@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/spec.schema.json",
+  "title": "Spec",
+  "description": "The artifact produced by the intake/spec stages: a concrete, reviewable statement of what will be built. See ADR-0004 and ADR-0003 (spec approval gate).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short human-readable title for the work item."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A few sentences describing what will change and why."
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Discrete, testable statements of required behavior."
+    },
+    "out_of_scope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Ambiguities the spec author flagged rather than guessed at. A non-empty list is a signal, not necessarily a blocker."
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Concrete, checkable conditions that determine when this work is done."
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["artifact_id", "run_id", "title", "summary", "requirements", "acceptance_criteria", "created_at"]
+}

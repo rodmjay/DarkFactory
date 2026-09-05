@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/testreport.schema.json",
+  "title": "TestReport",
+  "description": "The artifact produced by the verify stage: the result of running the project's declared test command against a ChangeSet. See ADR-0004.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "changeset_artifact_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Reference to the ChangeSet that was verified."
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The exact command executed (from the theme's declared test command)."
+    },
+    "exit_code": { "type": "integer" },
+    "passed": { "type": "integer", "minimum": 0 },
+    "failed": { "type": "integer", "minimum": 0 },
+    "skipped": { "type": "integer", "minimum": 0 },
+    "stdout_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Artifact reference to full stdout. Large; never inlined."
+    },
+    "stderr_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Artifact reference to full stderr. Large; never inlined."
+    },
+    "success": {
+      "type": "boolean",
+      "description": "True iff exit_code == 0 and failed == 0."
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["artifact_id", "run_id", "changeset_artifact_ref", "command", "exit_code", "passed", "failed", "skipped", "success", "created_at"]
+}

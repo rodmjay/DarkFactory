@@ -1,0 +1,11 @@
+.git
+**/bin
+**/obj
+**/node_modules
+**/.next
+dashboard
+reference
+tests
+docs
+contracts
+*.md
