@@ -66,6 +66,15 @@ if ! docker compose up -d > "$up_log" 2>&1; then
     # looking for a bug that is not there. Every host publish is
     # configurable precisely because a developer machine runs several
     # stacks at once.
+    # Docker Desktop only bind-mounts paths it has been given access to, and
+    # workspace-demo mounts the repo. A checkout outside those paths fails
+    # with a message about the daemon rather than about the checkout.
+    if grep -qi 'mounts denied' "$up_log"; then
+        printf '\n\033[33mThis is Docker file sharing, not a problem with the code.\033[0m\n' >&2
+        printf 'workspace-demo bind-mounts this repository, so the checkout has to sit under a\n' >&2
+        printf 'path Docker is allowed to share (Docker Desktop -> Resources -> File Sharing).\n' >&2
+    fi
+
     if grep -qiE 'port is already allocated|address already in use|ports are not available' "$up_log"; then
         printf '\n\033[33mThis is a host port collision, not a problem with the code.\033[0m\n' >&2
         grep -oiE '(0\.0\.0\.0|127\.0\.0\.1):[0-9]+' "$up_log" | sort -u | sed 's/^/  in use: /' >&2
@@ -123,6 +132,21 @@ check_web() {
     local log port
     log=$(mktemp)
     port=${WEB_SMOKE_PORT:-14999}
+
+    # A clean checkout has no node_modules, and this check is the one thing
+    # in the repo whose whole purpose is to work from a clean checkout. An
+    # error message telling the reader to run pnpm install is honest and
+    # still the wrong answer: the gate knows what it needs, so it installs
+    # it — the same reason the test fixture builds the reference server
+    # rather than telling you to.
+    if [ ! -d node_modules ] || [ ! -d dashboard/node_modules ]; then
+        printf '  installing workspace dependencies (first run in this checkout)\n'
+        if ! pnpm install --frozen-lockfile > "$log" 2>&1; then
+            tail -15 "$log"; rm -f "$log"
+            fail "pnpm install --frozen-lockfile"
+            return 1
+        fi
+    fi
 
     if ! pnpm --filter dashboard build > "$log" 2>&1; then
         tail -15 "$log"; rm -f "$log"
