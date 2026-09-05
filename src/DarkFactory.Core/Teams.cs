@@ -84,6 +84,18 @@ public sealed class TeamMember
     /// <summary>Null means no explicit cap; the org's default applies.</summary>
     public int? TokenBudget { get; set; }
 
+    /// <summary>
+    /// The largest answer this member may produce in one call.
+    ///
+    /// Per member because the roles differ by an order of magnitude: a
+    /// router classifies in a sentence, while an implementer returns whole
+    /// files and will silently truncate mid-JSON if held to a chat-sized
+    /// limit — which costs a full retry and reads as "invalid response"
+    /// rather than as the configuration mistake it is. Null takes the
+    /// gateway's default.
+    /// </summary>
+    public int? MaxOutputTokens { get; set; }
+
     /// <summary>The <c>df.*</c> capabilities this member is allowed to call, as a JSON array.</summary>
     public required string CapabilitiesJson { get; set; }
 

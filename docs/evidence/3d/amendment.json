@@ -1,0 +1,1 @@
+{"id":"01M1SBDTGN5KH1A7XPQPHV5FFG","projectId":"01M1SBDFGEE5PDM8PVEA5HVXF4","status":"Approved","diff":{"creates":[{"kind":"behavior","layer":"api","text":"A GET request to /health/detailed returns a response that reports whether the service can currently reach its database."}],"revises":[],"retires":[],"edge_adds":[],"edge_retires":[]}}

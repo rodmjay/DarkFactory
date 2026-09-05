@@ -144,6 +144,7 @@ public sealed class AnthropicModelGateway : IModelGateway
             LatencyMs = stopwatch.ElapsedMilliseconds,
             Provider = ProviderName,
             ModelFamily = model,
+            StopReason = completion.StopReason,
         };
     }
 

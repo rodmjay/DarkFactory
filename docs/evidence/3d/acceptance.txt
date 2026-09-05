@@ -1,0 +1,13 @@
+run       01M1SBDTPBW9187541T4DR7JW6
+snapshot  01M1SBDTN7QH3393XQQKA5K5RD
+
+PASS  run reached ship and completed
+        Completed
+PASS  PR body carries every spec id the run implemented
+        01M1SBDTK1GZFHT7DPX1XZ8S09
+PASS  PR body carries the snapshot id
+        01M1SBDTN7QH3393XQQKA5K5RD
+PASS  every spec id in the snapshot appears in the diff
+        none missing
+PASS  no spec id outside the snapshot appears in the diff
+        none foreign

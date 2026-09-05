@@ -11,7 +11,8 @@ public sealed record ResolvedAgent(
     string Role,
     string Deployment,
     string? FallbackDeployment,
-    int? TokenBudget);
+    int? TokenBudget,
+    int? MaxOutputTokens);
 
 public sealed class TeamNotConfiguredException(string message) : Exception(message);
 
@@ -42,8 +43,10 @@ public sealed class TeamService(DarkFactoryDbContext db)
             ["df.specs.query", "df.specs.get", "df.specs.neighborhood", "df.specs.propose"]),
         new(AgentRoles.Planner, AssignmentPoints.Plan,
             ["df.specs.get", "df.files.list", "df.files.read_many"]),
+        // Whole files, so a chat-sized output limit truncates it mid-JSON.
         new(AgentRoles.Implementer, AssignmentPoints.Implement,
-            ["df.files.read_many", "df.files.write_many", "df.exec.run"]),
+            ["df.files.read_many", "df.files.write_many", "df.exec.run"],
+            MaxOutputTokens: ImplementerMaxOutputTokens),
         // Verification is checkable by a test, so it does not need the
         // strongest model — but it does need to be able to run one.
         new(AgentRoles.Reviewer, AssignmentPoints.Verify,
@@ -51,7 +54,16 @@ public sealed class TeamService(DarkFactoryDbContext db)
         new(AgentRoles.Router, AssignmentPoints.Triage, []),
     ];
 
-    public sealed record TeamTemplateMember(string Role, string Point, IReadOnlyList<string> Capabilities);
+    public sealed record TeamTemplateMember(
+        string Role, string Point, IReadOnlyList<string> Capabilities, int? MaxOutputTokens = null);
+
+    /// <summary>
+    /// What an implementer needs to return whole files without being cut
+    /// off mid-answer. Held as a named constant rather than a literal in
+    /// the template because the failure it prevents — truncation that
+    /// presents as a malformed response — is not obvious from the number.
+    /// </summary>
+    public const int ImplementerMaxOutputTokens = 32_000;
 
     /// <summary>
     /// Seeds the default team. Called at project registration so a project
@@ -92,6 +104,7 @@ public sealed class TeamService(DarkFactoryDbContext db)
                 Deployment = template.Role,
                 FallbackDeployment = null,
                 TokenBudget = null,
+                MaxOutputTokens = template.MaxOutputTokens,
                 CapabilitiesJson = JsonSerializer.Serialize(template.Capabilities),
                 CreatedAt = now,
             };
@@ -129,7 +142,7 @@ public sealed class TeamService(DarkFactoryDbContext db)
             from a in db.Assignments.AsNoTracking()
             join m in db.TeamMembers.AsNoTracking() on a.TeamMemberId equals m.Id
             where a.TeamId == team.Id && a.Point == point
-            select new ResolvedAgent(team.Id, m.Id, m.Role, m.Deployment, m.FallbackDeployment, m.TokenBudget))
+            select new ResolvedAgent(team.Id, m.Id, m.Role, m.Deployment, m.FallbackDeployment, m.TokenBudget, m.MaxOutputTokens))
             .SingleOrDefaultAsync(cancellationToken);
 
         return resolved ?? throw new TeamNotConfiguredException(
@@ -151,7 +164,7 @@ public sealed class TeamService(DarkFactoryDbContext db)
             join m in db.TeamMembers.AsNoTracking() on a.TeamMemberId equals m.Id
             where a.TeamId == team.Id
             orderby a.Point
-            select new ResolvedAgent(team.Id, m.Id, m.Role, m.Deployment, m.FallbackDeployment, m.TokenBudget))
+            select new ResolvedAgent(team.Id, m.Id, m.Role, m.Deployment, m.FallbackDeployment, m.TokenBudget, m.MaxOutputTokens))
             .ToListAsync(cancellationToken);
     }
 }

@@ -1,0 +1,190 @@
+diff --git a/src/Health/Models/DetailedHealthResponse.cs b/src/Health/Models/DetailedHealthResponse.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Health/Models/DetailedHealthResponse.cs
+@@ -0,0 +1,19 @@
++namespace DarkFactory.Health.Models
++{
++    /// <summary>
++    /// Response payload for the detailed health endpoint.
++    /// </summary>
++    [Spec("01M1SBDTK1GZFHT7DPX1XZ8S09")]
++    public class DetailedHealthResponse
++    {
++        /// <summary>
++        /// Overall status of the service: "healthy" or "degraded".
++        /// </summary>
++        public string Status { get; set; } = string.Empty;
++
++        /// <summary>
++        /// Whether the service can currently reach its database.
++        /// </summary>
++        public bool DatabaseReachable { get; set; }
++    }
++}
+diff --git a/src/Health/Services/IDatabaseHealthCheckService.cs b/src/Health/Services/IDatabaseHealthCheckService.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Health/Services/IDatabaseHealthCheckService.cs
+@@ -0,0 +1,17 @@
++using System.Threading;
++using System.Threading.Tasks;
++
++namespace DarkFactory.Health.Services
++{
++    /// <summary>
++    /// Checks whether the database backing this service is currently reachable.
++    /// </summary>
++    [Spec("01M1SBDTK1GZFHT7DPX1XZ8S09")]
++    public interface IDatabaseHealthCheckService
++    {
++        /// <summary>
++        /// Attempts to reach the database and reports success or failure.
++        /// </summary>
++        Task<bool> IsDatabaseReachableAsync(CancellationToken cancellationToken);
++    }
++}
+diff --git a/src/Health/Services/DatabaseHealthCheckService.cs b/src/Health/Services/DatabaseHealthCheckService.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Health/Services/DatabaseHealthCheckService.cs
+@@ -0,0 +1,64 @@
++using System;
++using System.Data.Common;
++using System.Threading;
++using System.Threading.Tasks;
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.Logging;
++
++namespace DarkFactory.Health.Services
++{
++    /// <summary>
++    /// Default implementation of <see cref="IDatabaseHealthCheckService"/> that attempts to
++    /// open a connection against the configured database.
++    /// </summary>
++    [Spec("01M1SBDTK1GZFHT7DPX1XZ8S09")]
++    public class DatabaseHealthCheckService : IDatabaseHealthCheckService
++    {
++        private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(5);
++
++        private readonly DbProviderFactory _dbProviderFactory;
++        private readonly string _connectionString;
++        private readonly ILogger<DatabaseHealthCheckService> _logger;
++
++        public DatabaseHealthCheckService(
++            DbProviderFactory dbProviderFactory,
++            IConfiguration configuration,
++            ILogger<DatabaseHealthCheckService> logger)
++        {
++            _dbProviderFactory = dbProviderFactory;
++            _connectionString = configuration.GetConnectionString("Default") ?? string.Empty;
++            _logger = logger;
++        }
++
++        public async Task<bool> IsDatabaseReachableAsync(CancellationToken cancellationToken)
++        {
++            if (string.IsNullOrEmpty(_connectionString))
++            {
++                _logger.LogWarning("No database connection string configured; reporting database as unreachable.");
++                return false;
++            }
++
++            using var timeoutCts = new CancellationTokenSource(ConnectionTimeout);
++            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
++
++            try
++            {
++                using var connection = _dbProviderFactory.CreateConnection();
++                if (connection is null)
++                {
++                    _logger.LogWarning("Database provider factory returned a null connection; reporting database as unreachable.");
++                    return false;
++                }
++
++                connection.ConnectionString = _connectionString;
++                await connection.OpenAsync(linkedCts.Token);
++                return true;
++            }
++            catch (Exception ex)
++            {
++                _logger.LogWarning(ex, "Database health check failed.");
++                return false;
++            }
++        }
++    }
++}
+diff --git a/src/Health/Controllers/HealthController.cs b/src/Health/Controllers/HealthController.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Health/Controllers/HealthController.cs
+@@ -0,0 +1,41 @@
++using System.Threading;
++using System.Threading.Tasks;
++using DarkFactory.Health.Models;
++using DarkFactory.Health.Services;
++using Microsoft.AspNetCore.Mvc;
++
++namespace DarkFactory.Health.Controllers
++{
++    /// <summary>
++    /// Exposes health endpoints for the service.
++    /// </summary>
++    [ApiController]
++    [Route("health")]
++    public class HealthController : ControllerBase
++    {
++        private readonly IDatabaseHealthCheckService _databaseHealthCheckService;
++
++        public HealthController(IDatabaseHealthCheckService databaseHealthCheckService)
++        {
++            _databaseHealthCheckService = databaseHealthCheckService;
++        }
++
++        /// <summary>
++        /// Returns detailed health information, including whether the database is currently reachable.
++        /// </summary>
++        [HttpGet("detailed")]
++        [Spec("01M1SBDTK1GZFHT7DPX1XZ8S09")]
++        public async Task<ActionResult<DetailedHealthResponse>> GetDetailedHealth(CancellationToken cancellationToken)
++        {
++            var isDatabaseReachable = await _databaseHealthCheckService.IsDatabaseReachableAsync(cancellationToken);
++
++            var response = new DetailedHealthResponse
++            {
++                Status = isDatabaseReachable ? "healthy" : "degraded",
++                DatabaseReachable = isDatabaseReachable
++            };
++
++            return Ok(response);
++        }
++    }
++}
+diff --git a/src/Health/HealthServiceCollectionExtensions.cs b/src/Health/HealthServiceCollectionExtensions.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Health/HealthServiceCollectionExtensions.cs
+@@ -0,0 +1,23 @@
++using System.Data.Common;
++using DarkFactory.Health.Services;
++using Microsoft.Extensions.DependencyInjection;
++
++namespace DarkFactory.Health
++{
++    /// <summary>
++    /// Registers the services needed to support the detailed health endpoint.
++    /// </summary>
++    [Spec("01M1SBDTK1GZFHT7DPX1XZ8S09")]
++    public static class HealthServiceCollectionExtensions
++    {
++        /// <summary>
++        /// Adds the database health check service used by GET /health/detailed.
++        /// </summary>
++        public static IServiceCollection AddDetailedHealthChecks(this IServiceCollection services, DbProviderFactory dbProviderFactory)
++        {
++            services.AddSingleton(dbProviderFactory);
++            services.AddScoped<IDatabaseHealthCheckService, DatabaseHealthCheckService>();
++            return services;
++        }
++    }
++}
+

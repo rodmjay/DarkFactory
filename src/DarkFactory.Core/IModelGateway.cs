@@ -133,6 +133,17 @@ public sealed record ModelCompletion(
 
     /// <summary>The concrete model behind the deployment name.</summary>
     public string? ModelFamily { get; init; }
+
+    /// <summary>
+    /// Why generation stopped. Carried because "the response was not valid
+    /// JSON" and "the response was cut off at the output limit" are the
+    /// same symptom with completely different fixes, and only the provider
+    /// can tell them apart.
+    /// </summary>
+    public string? StopReason { get; init; }
+
+    /// <summary>True when the model ran out of output budget mid-answer.</summary>
+    public bool Truncated => StopReason is "max_tokens" or "length";
 }
 
 /// <summary>

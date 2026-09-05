@@ -62,11 +62,13 @@ public sealed class StageAgent(
                 built.Agent.Deployment,
                 systemPrompt(built.Pack),
                 messages,
+                MaxOutputTokens: built.Agent.MaxOutputTokens ?? DefaultMaxOutputTokens,
                 Context: CallContext(context, built, stage, attempt: 1, promptTemplateVersion),
                 CacheableSystemPrefix: cacheablePrefix(built.Pack)),
             cancellationToken);
 
         var (value, validation) = await parse(completion.Text);
+        validation = Explain(validation, completion);
         if (validation.IsValid && value is not null)
         {
             await RecordOutcomeAsync(completion.ModelCallId, validFirstTry: true, cancellationToken);
@@ -97,11 +99,13 @@ public sealed class StageAgent(
                 retryBuilt.Agent.Deployment,
                 systemPrompt(retryBuilt.Pack),
                 retryMessages,
+                MaxOutputTokens: retryBuilt.Agent.MaxOutputTokens ?? DefaultMaxOutputTokens,
                 Context: CallContext(context, retryBuilt, stage, attempt: 2, promptTemplateVersion, retried: true),
                 CacheableSystemPrefix: cacheablePrefix(retryBuilt.Pack)),
             cancellationToken);
 
         var (retryValue, retryValidation) = await parse(retry.Text);
+        retryValidation = Explain(retryValidation, retry);
         if (!retryValidation.IsValid || retryValue is null)
         {
             await RecordOutcomeAsync(retry.ModelCallId, validFirstTry: false, cancellationToken, "invalid_after_retry");
@@ -112,6 +116,34 @@ public sealed class StageAgent(
 
         await RecordOutcomeAsync(retry.ModelCallId, validFirstTry: false, cancellationToken);
         return new AgentTurn<T>(retryValue, retryBuilt.Ref, retry.ModelCallId, ValidFirstTry: false);
+    }
+
+    /// <summary>Used when a member declares no limit of its own.</summary>
+    public const int DefaultMaxOutputTokens = 8192;
+
+    /// <summary>
+    /// Names truncation for what it is.
+    ///
+    /// A response cut off at the output limit fails to parse, and the
+    /// parser can only report that it did not parse — which sends both the
+    /// model and whoever reads the log looking for a formatting mistake
+    /// that is not there. Only the provider knows the difference, so where
+    /// it tells us, we say so.
+    /// </summary>
+    private static SchemaValidationResult Explain(SchemaValidationResult validation, ModelCompletion completion)
+    {
+        if (validation.IsValid || !completion.Truncated)
+        {
+            return validation;
+        }
+
+        return new SchemaValidationResult(false,
+        [
+            new SchemaValidationError("(root)",
+                "your reply was cut off before it finished because it reached the output token limit — " +
+                "return fewer or smaller files in one response rather than a truncated answer"),
+            .. validation.Errors,
+        ]);
     }
 
     private static ModelCallContext CallContext(
