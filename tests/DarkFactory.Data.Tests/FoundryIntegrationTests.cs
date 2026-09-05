@@ -63,12 +63,23 @@ public sealed class FoundryIntegrationTests
 
         var completion = await gateway.CompleteAsync(new ModelRequest(
             Deployment: deployment,
-            SystemPrompt: "Reply with exactly the word: ok",
+            SystemPrompt: "Reply with the single word: ok",
             Messages: [new ModelMessage(ModelRole.User, "ready?")],
-            MaxOutputTokens: 16));
+            // Deliberately generous for a one-word answer. A reasoning
+            // model can spend its entire output budget thinking and return
+            // empty content, which would fail this test on a round trip
+            // that actually worked — and this test is the gate for whether
+            // anything downstream means anything, so a false negative here
+            // is far more expensive than a few wasted tokens.
+            MaxOutputTokens: 512));
 
-        Assert.False(string.IsNullOrWhiteSpace(completion.Text));
         Assert.True(completion.Usage.TotalTokens > 0, "the provider reported no token usage");
+
+        Assert.False(string.IsNullOrWhiteSpace(completion.Text),
+            $"deployment '{deployment}' authenticated and billed " +
+            $"{completion.Usage.InputTokens}+{completion.Usage.OutputTokens} tokens but returned no text. " +
+            "Auth and routing are fine; this is the model producing nothing, most likely reasoning tokens " +
+            "consuming the output budget.");
 
         // The gateway reports which deployment served the call, which is
         // what an audit record needs after a fallback.
