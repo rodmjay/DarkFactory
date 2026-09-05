@@ -15,6 +15,23 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-shot: applies pending plain-.sql migrations (DarkFactory.Migrate,
+  # docs/adr/0008 and src/DarkFactory.Data/MigrationRunner.cs) and exits.
+  # `factory`/`worker` never migrate on startup — they only verify the
+  # schema is current (SchemaGuard) and refuse to start otherwise, so this
+  # has to complete successfully before either comes up.
+  migrate:
+    build:
+      context: .
+      dockerfile: src/Dockerfile
+    command: ["/app/migrate/DarkFactory.Migrate.dll"]
+    environment:
+      ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=${POSTGRES_USER:-darkfactory};Password=${POSTGRES_PASSWORD:-darkfactory}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   factory:
     build:
       context: .
@@ -28,6 +45,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s
@@ -46,6 +65,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       factory:
         condition: service_healthy
     healthcheck:

@@ -36,9 +36,14 @@ public enum GateStatus
     Rejected
 }
 
-/// <summary>The two v1 human gates. See docs/adr/0003-pipeline-skeleton.md.</summary>
+/// <summary>
+/// The two planned v1 human gates (docs/adr/0003-pipeline-skeleton.md), plus
+/// NeedsHuman for an unplanned escalation reusing the same gate machinery
+/// (docs/adr/0007-failure-classes.md).
+/// </summary>
 public enum GateKind
 {
     SpecApproval,
-    PrApproval
+    PrApproval,
+    NeedsHuman
 }

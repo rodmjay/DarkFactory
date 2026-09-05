@@ -37,8 +37,16 @@ builder.Services
     .WithToolsFromAssembly();
 
 builder.Services.AddSignalR();
+builder.Services.AddScoped<DarkFactory.Data.IRunEventBroadcaster, SignalRRunEventBroadcaster>();
+builder.Services.AddHostedService<OutboxPublisherHostedService>();
 
 var app = builder.Build();
+
+// Refuse to start against a schema this build doesn't understand (see
+// SchemaGuard.cs and docs/adr/0008). Migrations run only from the
+// `migrate` service/entrypoint (DarkFactory.Migrate), never here.
+await SchemaGuard.EnsureSchemaUpToDateAsync(
+    builder.Configuration.GetConnectionString(ServiceCollectionExtensions.ConnectionStringName)!);
 
 // Liveness: the process is up. Deliberately does not check dependencies —
 // that's what /health/detailed (a factory-managed feature, not container

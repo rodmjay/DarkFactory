@@ -7,11 +7,15 @@ conventions in [`docs/conventions/`](docs/conventions/). It never holds
 customer code — only orchestration state and metadata. See
 [`docs/adr/`](docs/adr/) for the full set of foundational decisions.
 
-**Status:** early scaffolding. The repo skeleton, ADRs, conventions, schemas,
-and a Compose stack that boots with health checks exist today. The data
-model/engine, the front MCP surface, the reference workspace server, and the
-dashboard land in the steps that follow — see each area's code comments for
-what's real versus stubbed.
+**Status:** repo skeleton (ADRs, conventions, schemas, Compose) plus a real
+data model, migrations, and engine: a Postgres-backed state machine with
+leased claiming, a transactional outbox, an artifact store, and a retry
+policy, all driving the six-stage pipeline with its two v1 gates — proven by
+an integration test that kills a real worker process mid-stage and resumes
+it in a second, independent process from durable state alone (see
+`tests/DarkFactory.Engine.Tests/CrashResumeTests.cs`). The front MCP surface
+(`projects.*`, `work.*`) and the reference workspace server are next — see
+each area's code comments for what's real versus stubbed.
 
 ## 1. `docker compose up`
 
@@ -25,14 +29,19 @@ This brings up:
 | Service     | What it is                                              | Where            |
 |-------------|----------------------------------------------------------|------------------|
 | `postgres`  | Postgres 16, the factory's own state (never customer code) | `localhost:5432` |
+| `migrate`   | One-shot: applies pending `.sql` migrations (`DarkFactory.Migrate`), then exits | runs once, no ports |
 | `factory`   | The MCP server + API + SignalR hub + webhook ingress (`DarkFactory.Mcp`) | `localhost:5100`, MCP endpoint at `http://localhost:5100/mcp` |
 | `worker`    | The background engine (`DarkFactory.Engine`) — same image as `factory`, different entrypoint | internal only |
 | `dashboard` | The Next.js dashboard | `localhost:3000` |
 
-All four report a Docker health check; `docker compose ps` should show
-`healthy` for each once they're up. `factory`/`worker` expose `GET /health`
-(liveness) and `GET /health/ready` (readiness — checks Postgres
-connectivity); `dashboard` exposes `GET /api/health`.
+`factory` and `worker` both depend on `migrate` completing successfully
+first, and each refuses to start on its own if the database's applied
+migrations don't cover everything this build ships (`SchemaGuard`) — neither
+one ever migrates the schema itself. `postgres`, `factory`, `worker`, and
+`dashboard` all report a Docker health check; `docker compose ps` should
+show `healthy` for each once they're up. `factory`/`worker` expose
+`GET /health` (liveness) and `GET /health/ready` (readiness — checks
+Postgres connectivity); `dashboard` exposes `GET /api/health`.
 
 The reference workspace server (`reference/workspace-mcp`) is **not** a
 Compose service — see step 2.
@@ -89,15 +98,20 @@ approved from the dashboard along the way — see
 docs/adr/                     ADR-0001..0014 — every foundational decision, why, and its consequences
 docs/conventions/              Workspace (v0.1, implemented), Theme/Plugin (v0.1, mostly TODO), the call envelope
 contracts/schemas/             JSON Schema for Envelope, HookResult, Spec, Plan, ChangeSet, TestReport
-src/DarkFactory.Mcp/           ASP.NET Core host: MCP server, SignalR hub, webhook ingress, health
-src/DarkFactory.Core/          Domain: Project, WorkItem, Run, Stage, Artifact, Gate, Event, AuditEntry
-src/DarkFactory.Engine/        Background worker: state machine, hook dispatcher, retry policy, gates
-src/DarkFactory.Data/          EF Core DbContext, migrations, state store, artifact store
+src/DarkFactory.Mcp/           ASP.NET Core host: MCP server, SignalR hub, outbox publisher, webhook ingress, health
+src/DarkFactory.Core/          Domain: Project, WorkItem, Run, Stage, Artifact, Gate, Event, AuditEntry, PipelineStages
+src/DarkFactory.Engine/        RunStateMachine (checkpoint + outbox + lease release, one transaction), GateService,
+                                retry policy, default stage handlers, EngineWorker (claim/poll loop)
+src/DarkFactory.Data/          EF Core DbContext (queries only), plain-.sql MigrationRunner, SchemaGuard,
+                                RunLeaseStore (leased claiming), ArtifactStore, OutboxDrain
+src/DarkFactory.Data/Migrations/ Hand-written, versioned .sql — the schema's source of truth (no EF Migrations)
+src/DarkFactory.Migrate/       One-shot console app: applies pending Migrations/*.sql; the only thing that migrates
 src/DarkFactory.Contracts/     C# types matching contracts/schemas
 src/DarkFactory.Client/        MCP client wrapper: envelope, deadlines, failure classification
 dashboard/                     Next.js dashboard
 reference/workspace-mcp/       TypeScript reference implementation of the Workspace convention
-tests/                         DarkFactory.Engine.Tests, DarkFactory.Mcp.Tests
+tests/DarkFactory.Engine.Tests/ Lease/outbox/retry/happy-path tests + CrashResumeTests (real process kill + resume)
+tests/DarkFactory.Mcp.Tests/   Project naming (docs/adr/0013)
 ```
 
 ## What's out of scope for now
@@ -111,9 +125,15 @@ and deploy hooks.
 ## Development
 
 ```sh
-# .NET solution (Core, Contracts, Data, Client, Mcp, Engine, and both test projects)
+# .NET solution (Core, Contracts, Data, Migrate, Client, Mcp, Engine, and both test projects)
 dotnet build DarkFactory.sln
-dotnet test DarkFactory.sln
+dotnet test DarkFactory.sln   # DarkFactory.Engine.Tests needs Docker: it spins up a real
+                               # Postgres via Testcontainers and, for the crash/resume test,
+                               # a real second `dotnet` process — see CrashResumeTests.cs
+
+# Apply migrations to a local Postgres without Docker Compose
+dotnet run --project src/DarkFactory.Migrate -- # reads ConnectionStrings:DarkFactory from
+                                                  # appsettings.json / env, same as factory/worker
 
 # Dashboard
 cd dashboard && npm install && npm run dev
@@ -122,3 +142,14 @@ cd dashboard && npm install && npm run dev
 cd reference/workspace-mcp && npm install && npm run build
 node dist/index.js --http 5200 --root /path/to/a/repo   # or --root . for stdio use
 ```
+
+### Changing the schema
+
+There's no EF Core Migrations codegen here — `src/DarkFactory.Data/Migrations/`
+is hand-written, versioned `.sql`, applied in order by `MigrationRunner`
+(tracked in a `schema_migrations` table) and embedded into
+`DarkFactory.Data.dll` so the `migrate` image needs no extra file-copy step.
+To add a schema change: write a new `NNNN_description.sql` file there (next
+version number, zero-padded), update `DarkFactoryDbContext`'s
+`OnModelCreating` to match, and run `DarkFactory.Migrate` to apply it.
+`factory`/`worker` will refuse to start until you do (`SchemaGuard`).

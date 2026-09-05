@@ -1,5 +1,6 @@
 using DarkFactory.Data;
 using DarkFactory.Engine;
+using DarkFactory.Engine.StageHandlers;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -25,9 +26,25 @@ builder.Services.AddOpenTelemetry()
     });
 
 builder.Services.AddDarkFactoryData(builder.Configuration);
+builder.Services.Configure<EngineOptions>(builder.Configuration.GetSection(EngineOptions.SectionName));
+
+builder.Services.AddScoped<IStageHandler, IntakeStageHandler>();
+builder.Services.AddScoped<IStageHandler, SpecStageHandler>();
+builder.Services.AddScoped<IStageHandler, PlanStageHandler>();
+builder.Services.AddScoped<IStageHandler, ImplementStageHandler>();
+builder.Services.AddScoped<IStageHandler, VerifyStageHandler>();
+builder.Services.AddScoped<IStageHandler, ShipStageHandler>();
+builder.Services.AddScoped<GateService>();
+builder.Services.AddScoped<RunStateMachine>();
 builder.Services.AddHostedService<EngineWorker>();
 
 var app = builder.Build();
+
+// Refuse to start against a schema this build doesn't understand (see
+// SchemaGuard.cs and docs/adr/0008). Migrations run only from the
+// `migrate` service/entrypoint (DarkFactory.Migrate), never here.
+await SchemaGuard.EnsureSchemaUpToDateAsync(
+    builder.Configuration.GetConnectionString(ServiceCollectionExtensions.ConnectionStringName)!);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapHealthChecks("/health/ready");

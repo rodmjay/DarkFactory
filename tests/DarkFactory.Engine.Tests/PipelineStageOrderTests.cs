@@ -3,7 +3,9 @@ using DarkFactory.Core;
 namespace DarkFactory.Engine.Tests;
 
 // Covers docs/adr/0003-pipeline-skeleton.md's fixed six-stage order, which
-// the state machine (step 2) advances through.
+// RunStateMachine advances through. See CrashResumeTests for the
+// checkpoint/resume proof and RunStateMachineHappyPathTests for the full
+// walk through all six stages.
 public class PipelineStageOrderTests
 {
     [Fact]
@@ -19,15 +21,14 @@ public class PipelineStageOrderTests
             StageId.Ship
         };
 
-        var actual = Enum.GetValues<StageId>();
+        Assert.Equal(expected, Enum.GetValues<StageId>());
+        Assert.Equal(expected, PipelineStages.Order);
+    }
 
-        Assert.Equal(expected, actual);
+    [Fact]
+    public void Next_throws_on_the_last_stage()
+    {
+        Assert.True(PipelineStages.IsLast(StageId.Ship));
+        Assert.Throws<InvalidOperationException>(() => PipelineStages.Next(StageId.Ship));
     }
 }
-
-// The Postgres-backed state machine, hook dispatcher, retry policy, and
-// gate handling are step 2 work (docs/adr/0008-durable-orchestration.md).
-// That step must add a test here that starts a run, kills the worker
-// mid-`implement`, restarts it, and asserts the run resumes from
-// `implement` rather than `intake` — proving checkpoint/resume actually
-// works rather than merely compiling.

@@ -1,28 +1,66 @@
+using DarkFactory.Core;
+using Microsoft.Extensions.Options;
+
 namespace DarkFactory.Engine;
 
 /// <summary>
-/// The background worker that will poll the <c>runs</c> queue with
-/// <c>FOR UPDATE SKIP LOCKED</c> and drive the checkpointed state machine
-/// (docs/adr/0008-durable-orchestration.md): load checkpoint, dispatch
-/// pre-hooks, run the stage agent, validate + persist the artifact,
-/// dispatch post-hooks, emit <c>stage.completed</c>, advance.
-///
-/// The state machine, hook dispatcher, retry policy, and gate handling are
-/// step 2 work (data model + migrations + engine, with tests proving
-/// checkpoint/resume). This slice proves the worker process starts, logs a
-/// heartbeat, and reports healthy via the same /health endpoint pattern as
-/// the factory.
+/// Polls for runnable work and drives it one stage at a time
+/// (docs/adr/0008): claim, run the stage handler, checkpoint + outbox event
+/// + advance in one transaction (RunStateMachine), repeat. A fresh DI scope
+/// (and DbContext) per iteration, since EngineWorker itself is a singleton.
 /// </summary>
-public sealed class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
+public sealed class EngineWorker(
+    IServiceScopeFactory scopeFactory,
+    IOptions<EngineOptions> options,
+    ILogger<EngineWorker> logger) : BackgroundService
 {
+    /// <summary>
+    /// Test-only crash injection: if set to a StageId name, the worker
+    /// exits immediately (no graceful shutdown, no lease release) right
+    /// after successfully processing that stage — simulating a hard kill
+    /// between "checkpoint committed" and "next stage starts." See
+    /// tests/DarkFactory.Engine.Tests's crash/resume test.
+    /// </summary>
+    private const string CrashAfterStageEnvVar = "DARKFACTORY_CRASH_AFTER_STAGE";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Dark Factory engine worker starting.");
+        var crashAfterStage = Environment.GetEnvironmentVariable(CrashAfterStageEnvVar);
+        logger.LogInformation(
+            "Dark Factory engine worker {WorkerId} starting (lease={LeaseSeconds}s, poll={PollSeconds}s).",
+            options.Value.WorkerId, options.Value.LeaseDurationSeconds, options.Value.PollIntervalSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            logger.LogInformation("Engine heartbeat at {Timestamp:o}. Run queue polling lands in step 2.", DateTimeOffset.UtcNow);
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            StageId? processedStage;
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var stateMachine = scope.ServiceProvider.GetRequiredService<RunStateMachine>();
+                processedStage = await stateMachine.TryProcessOneAsync(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Unhandled error while processing a run.");
+                processedStage = null;
+            }
+
+            if (processedStage is { } stage)
+            {
+                logger.LogInformation("Processed stage {Stage}.", stage);
+
+                if (crashAfterStage is not null && string.Equals(stage.ToString(), crashAfterStage, StringComparison.OrdinalIgnoreCase))
+                {
+                    logger.LogWarning(
+                        "{EnvVar}={Stage} matched; exiting immediately to simulate a crash.",
+                        CrashAfterStageEnvVar, stage);
+                    Environment.Exit(137);
+                }
+            }
+            else
+            {
+                await Task.Delay(options.Value.PollInterval, stoppingToken);
+            }
         }
     }
 }

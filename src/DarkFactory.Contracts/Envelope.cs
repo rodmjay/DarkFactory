@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using DarkFactory.Core;
 
 namespace DarkFactory.Contracts;
 
@@ -32,19 +33,6 @@ public sealed record Envelope
 }
 
 /// <summary>
-/// Failure classification. Mirrors the "failure_class" enum in
-/// contracts/schemas/hookresult.schema.json.
-/// See docs/adr/0007-failure-classes.md.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<FailureClass>))]
-public enum FailureClass
-{
-    Retryable,
-    Permanent,
-    NeedsHuman
-}
-
-/// <summary>
 /// The result shape returned by hook points and convention tool calls.
 /// Mirrors contracts/schemas/hookresult.schema.json.
 /// </summary>
@@ -57,6 +45,7 @@ public sealed record HookResult
     public required bool Ok { get; init; }
 
     [JsonPropertyName("failure_class")]
+    [JsonConverter(typeof(FailureClassJsonConverter))]
     public FailureClass? FailureClass { get; init; }
 
     [JsonPropertyName("message")]

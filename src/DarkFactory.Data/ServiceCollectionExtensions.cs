@@ -15,7 +15,12 @@ public static class ServiceCollectionExtensions
         var connectionString = configuration.GetConnectionString(ConnectionStringName)
             ?? throw new InvalidOperationException($"Missing connection string '{ConnectionStringName}'.");
 
-        services.AddDbContext<DarkFactoryDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDbContext<DarkFactoryDbContext>(options => options
+            .UseNpgsql(connectionString)
+            .UseSnakeCaseNamingConvention());
+
+        services.AddScoped<IArtifactStore, PostgresArtifactStore>();
+        services.AddScoped<RunLeaseStore>();
 
         services.AddHealthChecks().AddNpgSql(
             connectionString,

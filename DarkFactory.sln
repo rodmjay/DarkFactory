@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DarkFactory.Engine.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DarkFactory.Mcp.Tests", "tests\DarkFactory.Mcp.Tests\DarkFactory.Mcp.Tests.csproj", "{FAC0DB39-73F8-4B7D-9C95-7910D29237D4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DarkFactory.Migrate", "src\DarkFactory.Migrate\DarkFactory.Migrate.csproj", "{30894ECC-2C57-4B70-B6A6-CC64530F107C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -129,6 +131,18 @@ Global
 		{FAC0DB39-73F8-4B7D-9C95-7910D29237D4}.Release|x64.Build.0 = Release|Any CPU
 		{FAC0DB39-73F8-4B7D-9C95-7910D29237D4}.Release|x86.ActiveCfg = Release|Any CPU
 		{FAC0DB39-73F8-4B7D-9C95-7910D29237D4}.Release|x86.Build.0 = Release|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Debug|x64.Build.0 = Debug|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Debug|x86.Build.0 = Debug|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Release|x64.ActiveCfg = Release|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Release|x64.Build.0 = Release|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Release|x86.ActiveCfg = Release|Any CPU
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -142,5 +156,6 @@ Global
 		{6AAE5FFF-6D92-4C9D-B042-D774CCA5ABE5} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F65E1125-1666-4DFD-9AFA-3DC99364BEB3} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{FAC0DB39-73F8-4B7D-9C95-7910D29237D4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{30894ECC-2C57-4B70-B6A6-CC64530F107C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
