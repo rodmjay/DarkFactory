@@ -10,23 +10,32 @@ namespace DarkFactory.Data;
 // full versioned vocabulary with per-type schemas is step 4; these two
 // types are what a conversational turn actually produces.
 
+/// <summary>
+/// docs/adr/0021: plugins bind to the component type, so the wire needs
+/// exactly one field that says what a payload is.
+///
+/// It used to carry two. <c>[JsonDerivedType]</c> emitted <c>$type</c> and
+/// an abstract <c>Type</c> property emitted <c>type</c>, with the same
+/// value and nothing keeping them equal — a derived type registered with a
+/// mismatched property would have made them disagree silently, and which
+/// one was normative would have been decided by whichever renderer happened
+/// to read the other. Naming the serializer's own discriminator <c>type</c>
+/// makes it one field that the serializer enforces, and the ADR's word for
+/// it is the one on the wire.
+/// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(MarkdownPayload), "markdown")]
 [JsonDerivedType(typeof(SpecDiffPayload), "spec_diff")]
-public abstract record RenderPayload
-{
-    [JsonPropertyName("type")] public abstract string Type { get; }
-}
+public abstract record RenderPayload;
 
-public sealed record MarkdownPayload(string Text) : RenderPayload
-{
-    public override string Type => "markdown";
-}
+public sealed record MarkdownPayload(
+    [property: JsonPropertyName("text")] string Text) : RenderPayload;
 
 /// <summary>An amendment awaiting approval, rendered as a diff (docs/adr/0017, docs/adr/0021).</summary>
-public sealed record SpecDiffPayload(string AmendmentId, SpecDiffDocument Diff, string Summary) : RenderPayload
-{
-    public override string Type => "spec_diff";
-}
+public sealed record SpecDiffPayload(
+    [property: JsonPropertyName("amendment_id")] string AmendmentId,
+    [property: JsonPropertyName("diff")] SpecDiffDocument Diff,
+    [property: JsonPropertyName("summary")] string Summary) : RenderPayload;
 
 public sealed record ConversationTurnResult(
     string TurnId,

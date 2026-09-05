@@ -37,10 +37,20 @@ builder.Services.AddOpenTelemetry()
 
 builder.Services.AddDarkFactoryData(builder.Configuration);
 
+// snake_case on the wire, because every published schema in
+// contracts/schemas/ is snake_case and a tool result is the same wire.
+//
+// Without this the SDK's camelCase default applied to the envelope while
+// the schema-backed shapes inside it kept their own [JsonPropertyName]
+// attributes, so one response carried both conventions with an invisible
+// boundary — `tokensUsed` beside `edge_adds`. A client destructuring that
+// needs to know where the seam is, and there is nothing on the wire that
+// says. The published contracts are the fixed point, so the envelope moves
+// to meet them rather than the other way round.
 builder.Services
     .AddMcpServer()
     .WithHttpTransport()
-    .WithToolsFromAssembly();
+    .WithToolsFromAssembly(typeof(Program).Assembly, McpJson.WireOptions);
 
 builder.Services.AddSignalR();
 builder.Services.AddScoped<DarkFactory.Data.IRunEventBroadcaster, SignalRRunEventBroadcaster>();
