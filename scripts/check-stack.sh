@@ -99,7 +99,12 @@ if ! docker compose up -d > "$up_log" 2>&1; then
 
     if grep -qiE 'port is already allocated|address already in use|ports are not available' "$up_log"; then
         printf '\n\033[33mThis is a host port collision, not a problem with the code.\033[0m\n' >&2
-        grep -oiE '(0\.0\.0\.0|127\.0\.0\.1):[0-9]+' "$up_log" | sort -u | sed 's/^/  in use: /' >&2
+        # :0 is dropped because the daemon's message reads
+        # "exposing port TCP 0.0.0.0:5432 -> 127.0.0.1:0", and listing the
+        # target side as a port in use sends people looking for a conflict
+        # on a port that does not exist.
+        grep -oiE '(0\.0\.0\.0|127\.0\.0\.1):[0-9]+' "$up_log" \
+            | grep -v ':0$' | sort -u | sed 's/^/  in use: /' >&2
         printf 'Set the matching override in .env and re-run:\n' >&2
         printf '  POSTGRES_PORT  FACTORY_PORT  DASHBOARD_PORT  WORKSPACE_DEMO_PORT\n' >&2
     fi
