@@ -28,11 +28,7 @@ internal sealed class ReferenceWorkspaceServer : IAsyncDisposable
         var repoRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", ".."));
         var entrypoint = Path.Combine(repoRoot, "reference", "workspace-mcp", "dist", "index.js");
 
-        if (!File.Exists(entrypoint))
-        {
-            throw new InvalidOperationException(
-                $"{entrypoint} not found. Run `npm install && npm run build` in reference/workspace-mcp first.");
-        }
+        await EnsureBuiltAsync(Path.Combine(repoRoot, "reference", "workspace-mcp"), entrypoint);
 
         var port = FreePort();
         var startInfo = new ProcessStartInfo("node", $"\"{entrypoint}\" --http {port} --root \"{workspaceRoot}\"")
@@ -45,6 +41,60 @@ internal sealed class ReferenceWorkspaceServer : IAsyncDisposable
 
         await WaitForListeningAsync(port, process);
         return new ReferenceWorkspaceServer(process, $"http://127.0.0.1:{port}/mcp");
+    }
+
+    /// <summary>
+    /// Builds the reference server if it has not been built.
+    ///
+    /// A fresh clone or a new worktree has no <c>dist/</c>, so seven tests
+    /// here used to fail on a checkout that was in no way broken. Telling
+    /// the reader to go and run npm was an honest error message and still
+    /// the wrong answer: the suite knows what it needs, so it should get
+    /// it, exactly as the engine fixture publishes the worker it is about
+    /// to launch. Once built, this costs a File.Exists.
+    /// </summary>
+    private static async Task EnsureBuiltAsync(string packageRoot, string entrypoint)
+    {
+        if (File.Exists(entrypoint))
+        {
+            return;
+        }
+
+        if (!Directory.Exists(Path.Combine(packageRoot, "node_modules")))
+        {
+            await RunAsync("npm", "ci", packageRoot);
+        }
+
+        await RunAsync("npm", "run build", packageRoot);
+
+        if (!File.Exists(entrypoint))
+        {
+            throw new InvalidOperationException(
+                $"Built reference/workspace-mcp but {entrypoint} still does not exist.");
+        }
+    }
+
+    private static async Task RunAsync(string file, string arguments, string workingDirectory)
+    {
+        var startInfo = new ProcessStartInfo(file, arguments)
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException($"could not start `{file} {arguments}`");
+
+        var stdout = await process.StandardOutput.ReadToEndAsync();
+        var stderr = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"`{file} {arguments}` failed in {workingDirectory} (exit {process.ExitCode}).\n{stdout}\n{stderr}");
+        }
     }
 
     /// <summary>

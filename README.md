@@ -210,6 +210,12 @@ scripts/check-stack.sh
 It builds every Compose service from an empty volume and waits for all of
 them to report healthy. **No session commits to main without it passing.**
 
+If it reports a host port collision, that is this machine and not the code:
+every published port is configurable, so set `POSTGRES_PORT`, `FACTORY_PORT`,
+`DASHBOARD_PORT` or `WORKSPACE_DEMO_PORT` in `.env` and re-run. Services
+reach each other by name on the Compose network, so the values are yours to
+choose.
+
 This exists because more than one session works in this repository at once,
 in separate worktrees, and each naturally builds only the part it is
 changing. Nobody builds the whole stack — so when one session retires a

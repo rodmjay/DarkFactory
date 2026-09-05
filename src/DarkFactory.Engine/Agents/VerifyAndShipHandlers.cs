@@ -25,7 +25,7 @@ public sealed class AgentVerifyStageHandler(
 
     public async Task<StageOutcome> ExecuteAsync(StageContext context, CancellationToken cancellationToken)
     {
-        var team = await db.Teams.AsNoTracking()
+        var team = await Db.Teams.AsNoTracking()
             .SingleOrDefaultAsync(t => t.ProjectId == context.Run.ProjectId && t.IsActive, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(team?.TestCommand))
@@ -118,7 +118,7 @@ public sealed class AgentVerifyStageHandler(
 
     private async Task<string?> LatestRefAsync(string runId, string type, CancellationToken cancellationToken)
     {
-        var artifact = await db.Artifacts.AsNoTracking()
+        var artifact = await Db.Artifacts.AsNoTracking()
             .Where(a => a.RunId == runId && a.Type == type)
             .OrderByDescending(a => a.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
@@ -275,7 +275,7 @@ public sealed class AgentShipStageHandler(
     private async Task<IReadOnlySet<string>> SnapshotSpecIdsAsync(Run run, CancellationToken cancellationToken) =>
         run.SnapshotId is null
             ? new HashSet<string>(StringComparer.Ordinal)
-            : (await db.SnapshotMembers.AsNoTracking()
+            : (await Db.SnapshotMembers.AsNoTracking()
                 .Where(m => m.SnapshotId == run.SnapshotId)
                 .Select(m => m.SpecId)
                 .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
@@ -288,14 +288,14 @@ public sealed class AgentShipStageHandler(
             return [];
         }
 
-        var members = await db.SnapshotMembers.AsNoTracking()
+        var members = await Db.SnapshotMembers.AsNoTracking()
             .Where(m => m.SnapshotId == run.SnapshotId)
             .ToListAsync(cancellationToken);
 
         var hashes = members.Select(m => m.RevisionHash).ToList();
         var ids = members.Select(m => m.SpecId).ToList();
 
-        var revisions = await db.SpecRevisions.AsNoTracking()
+        var revisions = await Db.SpecRevisions.AsNoTracking()
             .Where(r => ids.Contains(r.SpecId) && hashes.Contains(r.Hash))
             .ToListAsync(cancellationToken);
 
@@ -317,7 +317,7 @@ public sealed class AgentShipStageHandler(
     private async Task<T?> LatestAsync<T>(string runId, string type, CancellationToken cancellationToken)
         where T : class
     {
-        var artifact = await db.Artifacts.AsNoTracking()
+        var artifact = await Db.Artifacts.AsNoTracking()
             .Where(a => a.RunId == runId && a.Type == type)
             .OrderByDescending(a => a.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);

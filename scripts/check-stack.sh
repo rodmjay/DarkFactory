@@ -57,11 +57,28 @@ if ! docker compose build 2>&1 | tail -20; then
     exit 1
 fi
 
-if ! docker compose up -d 2>&1 | tail -20; then
+up_log=$(mktemp)
+if ! docker compose up -d > "$up_log" 2>&1; then
+    tail -20 "$up_log"
+
+    # A port collision is the machine, not the checkout, and saying "the
+    # stack does not come up from a clean checkout" would send someone
+    # looking for a bug that is not there. Every host publish is
+    # configurable precisely because a developer machine runs several
+    # stacks at once.
+    if grep -qiE 'port is already allocated|address already in use|ports are not available' "$up_log"; then
+        printf '\n\033[33mThis is a host port collision, not a problem with the code.\033[0m\n' >&2
+        grep -oiE '(0\.0\.0\.0|127\.0\.0\.1):[0-9]+' "$up_log" | sort -u | sed 's/^/  in use: /' >&2
+        printf 'Set the matching override in .env and re-run:\n' >&2
+        printf '  POSTGRES_PORT  FACTORY_PORT  DASHBOARD_PORT  WORKSPACE_DEMO_PORT\n' >&2
+    fi
+
+    rm -f "$up_log"
     fail "docker compose up failed — see the output above."
     cleanup
     exit 1
 fi
+rm -f "$up_log"
 
 say "Waiting for health checks (up to ${TIMEOUT_SECONDS}s)"
 

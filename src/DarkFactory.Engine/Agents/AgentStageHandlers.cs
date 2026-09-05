@@ -13,11 +13,20 @@ namespace DarkFactory.Engine.Agents;
 /// </summary>
 public abstract class AgentStageHandlerBase(DarkFactoryDbContext db, IServerProbe probe)
 {
+    /// <summary>
+    /// Exposed from the base rather than re-captured by each subclass. A
+    /// derived primary constructor taking its own `db` and also passing it
+    /// here stores the reference twice (CS9107), which is harmless today
+    /// because it is the same scoped instance — and exactly the sort of
+    /// thing that stops being harmless the moment one of them is swapped.
+    /// </summary>
+    protected DarkFactoryDbContext Db { get; } = db;
+
     /// <summary>Long enough for a test suite; a build is not a chat turn.</summary>
     protected static readonly TimeSpan WorkspaceDeadline = TimeSpan.FromMinutes(15);
 
     protected async Task<string> WorkspaceUrlAsync(Run run, CancellationToken cancellationToken) =>
-        await db.Projects.AsNoTracking()
+        await Db.Projects.AsNoTracking()
             .Where(p => p.Id == run.ProjectId)
             .Select(p => p.WorkspaceMcpUrl)
             .SingleAsync(cancellationToken);
@@ -37,7 +46,7 @@ public abstract class AgentStageHandlerBase(DarkFactoryDbContext db, IServerProb
             return snapshotSpecIds;
         }
 
-        var amendments = await db.Amendments.AsNoTracking()
+        var amendments = await Db.Amendments.AsNoTracking()
             .Where(a => run.AmendmentIds.Contains(a.Id))
             .Select(a => a.DiffJson)
             .ToListAsync(cancellationToken);
@@ -60,12 +69,12 @@ public abstract class AgentStageHandlerBase(DarkFactoryDbContext db, IServerProb
         // else identifiable, so the honest reading of "what this run
         // implements" is: the snapshot, minus anything that predates the
         // amendments. Provenance gives us that.
-        var createdByThisRun = await db.SpecRevisions.AsNoTracking()
+        var createdByThisRun = await Db.SpecRevisions.AsNoTracking()
             .Where(r => snapshotSpecIds.Contains(r.SpecId))
-            .Join(db.Provenance.AsNoTracking(), r => r.ProvenanceId, p => p.Id, (r, p) => new { r.SpecId, p.At })
+            .Join(Db.Provenance.AsNoTracking(), r => r.ProvenanceId, p => p.Id, (r, p) => new { r.SpecId, p.At })
             .ToListAsync(cancellationToken);
 
-        var amendmentTimes = await db.Amendments.AsNoTracking()
+        var amendmentTimes = await Db.Amendments.AsNoTracking()
             .Where(a => run.AmendmentIds.Contains(a.Id))
             .Select(a => a.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -139,7 +148,7 @@ public sealed class AgentPlanStageHandler(
     }
 
     private async Task<string?> TestCommandAsync(Run run, CancellationToken cancellationToken) =>
-        await db.Teams.AsNoTracking()
+        await Db.Teams.AsNoTracking()
             .Where(t => t.ProjectId == run.ProjectId && t.IsActive)
             .Select(t => t.TestCommand)
             .SingleOrDefaultAsync(cancellationToken);
@@ -333,14 +342,14 @@ public sealed class AgentImplementStageHandler(
     private async Task<IReadOnlySet<string>> SnapshotSpecIdsAsync(Run run, CancellationToken cancellationToken) =>
         run.SnapshotId is null
             ? new HashSet<string>(StringComparer.Ordinal)
-            : (await db.SnapshotMembers.AsNoTracking()
+            : (await Db.SnapshotMembers.AsNoTracking()
                 .Where(m => m.SnapshotId == run.SnapshotId)
                 .Select(m => m.SpecId)
                 .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
 
     private async Task<string?> LatestRefAsync(string runId, string type, CancellationToken cancellationToken)
     {
-        var artifact = await db.Artifacts.AsNoTracking()
+        var artifact = await Db.Artifacts.AsNoTracking()
             .Where(a => a.RunId == runId && a.Type == type)
             .OrderByDescending(a => a.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
