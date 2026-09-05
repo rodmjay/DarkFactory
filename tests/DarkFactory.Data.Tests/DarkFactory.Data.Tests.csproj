@@ -35,6 +35,9 @@
     <ProjectReference Include="..\..\src\DarkFactory.Client\DarkFactory.Client.csproj" />
     <ProjectReference Include="..\..\src\DarkFactory.Foundry\DarkFactory.Foundry.csproj" />
     <ProjectReference Include="..\..\src\DarkFactory.Anthropic\DarkFactory.Anthropic.csproj" />
+    <!-- For AddModelGateway: proving the container hands out the
+         recorder is a test about wiring, not about code. -->
+    <ProjectReference Include="..\..\src\DarkFactory.Hosting\DarkFactory.Hosting.csproj" />
     <!-- For ArtifactEndpoints: the patch-delivery test stands up a real
          HTTP host and has the real workspace server fetch from it. -->
     <ProjectReference Include="..\..\src\DarkFactory.Mcp\DarkFactory.Mcp.csproj" />

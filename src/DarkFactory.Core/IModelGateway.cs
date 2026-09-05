@@ -25,6 +25,17 @@ public sealed record ModelMessage(ModelRole Role, string Content);
 /// A role-named deployment (docs/adr/0027), never a vendor model id. The
 /// gateway is the only thing that knows which model that resolves to.
 /// </param>
+/// <param name="CacheableSystemPrefix">
+/// The part of the system prompt that is identical from call to call —
+/// skills, standards, the response contract. Sent ahead of
+/// <paramref name="SystemPrompt"/> with a cache breakpoint after it, so a
+/// run's repeated calls pay for it once rather than every time.
+/// <para>The split is the caller's judgement and it has to be honest: mark
+/// something cacheable that actually varies and every call misses the
+/// cache, which costs a little more than not trying. Anything that changes
+/// within a run — the spec neighbourhood, the conversation tail, prior
+/// artifacts — belongs in <paramref name="SystemPrompt"/>.</para>
+/// </param>
 /// <param name="Context">
 /// Who this call is for, so the gateway can write its usage fact row
 /// (docs/adr/0032). The gateway cannot record a run or a stage it was
@@ -37,7 +48,8 @@ public sealed record ModelRequest(
     IReadOnlyList<ModelMessage> Messages,
     int MaxOutputTokens = 8192,
     double? Temperature = null,
-    ModelCallContext? Context = null);
+    ModelCallContext? Context = null,
+    string? CacheableSystemPrefix = null);
 
 /// <summary>
 /// The dimensions docs/adr/0032 records against every call. Almost

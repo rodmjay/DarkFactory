@@ -60,7 +60,7 @@ public sealed class TeamService(DarkFactoryDbContext db)
     /// would be a setup step we forgot to make automatic.
     /// </summary>
     public async Task<Team> SeedDefaultTeamAsync(
-        string projectId, string orgId, CancellationToken cancellationToken = default)
+        string projectId, string orgId, string? testCommand = null, CancellationToken cancellationToken = default)
     {
         var existing = await db.Teams.SingleOrDefaultAsync(
             t => t.ProjectId == projectId && t.IsActive, cancellationToken);
@@ -77,6 +77,7 @@ public sealed class TeamService(DarkFactoryDbContext db)
             OrgId = orgId,
             Name = "default",
             IsActive = true,
+            TestCommand = testCommand,
             CreatedAt = now,
         };
         db.Teams.Add(team);

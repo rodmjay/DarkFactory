@@ -142,12 +142,21 @@ public sealed class FoundryModelGateway : IModelGateway
         }
     }
 
+    /// <summary>Stable prefix first, so a provider doing automatic prefix caching can find one.</summary>
+    private static string SystemPromptOf(ModelRequest request) =>
+        string.IsNullOrWhiteSpace(request.CacheableSystemPrefix)
+            ? request.SystemPrompt
+            : request.CacheableSystemPrefix + "\n\n" + request.SystemPrompt;
+
     private async Task<ModelCompletion> CompleteViaAzureOpenAIAsync(
         ModelRequest request, string deployment, CancellationToken cancellationToken)
     {
         var chat = _openAi!.GetChatClient(deployment);
 
-        var messages = new List<ChatMessage> { new SystemChatMessage(request.SystemPrompt) };
+        // No explicit breakpoint: the Azure OpenAI path caches stable
+        // prefixes automatically, so the two halves simply concatenate in
+        // the order that makes the stable part come first.
+        var messages = new List<ChatMessage> { new SystemChatMessage(SystemPromptOf(request)) };
         foreach (var message in request.Messages)
         {
             messages.Add(message.Role switch
@@ -192,7 +201,7 @@ public sealed class FoundryModelGateway : IModelGateway
             MaxTokens = request.MaxOutputTokens,
         };
 
-        options.Messages.Add(new ChatRequestSystemMessage(request.SystemPrompt));
+        options.Messages.Add(new ChatRequestSystemMessage(SystemPromptOf(request)));
         foreach (var message in request.Messages)
         {
             options.Messages.Add(message.Role switch

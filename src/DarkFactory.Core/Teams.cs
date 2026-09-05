@@ -47,6 +47,19 @@ public sealed class Team
     /// </summary>
     public required bool IsActive { get; set; }
 
+    /// <summary>
+    /// What `verify` runs. Team-level rather than project-level because it
+    /// is a statement about how this team judges its own work
+    /// (docs/adr/0022's verifiability criterion), and because a team
+    /// template can ship one.
+    ///
+    /// Null means the team has not declared one, and `verify` fails rather
+    /// than inventing a command — a stage that reports success because it
+    /// found nothing to run is worse than one that admits it is not
+    /// configured.
+    /// </summary>
+    public string? TestCommand { get; set; }
+
     public required DateTimeOffset CreatedAt { get; init; }
 }
 

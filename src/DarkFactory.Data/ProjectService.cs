@@ -36,17 +36,18 @@ public sealed class ProjectService(DarkFactoryDbContext db, ServerRegistry regis
                 "A project needs somewhere to keep its code.");
         }
 
+        var workspace = ReadWorkspaceConfig(registration.Live);
+
         var existing = await db.Projects.AsNoTracking()
             .SingleOrDefaultAsync(p => p.OrgId == orgId && p.WorkspaceMcpUrl == workspaceMcpUrl, cancellationToken);
         if (existing is not null)
         {
             // Same idempotency rule as the registry: one workspace URL is
             // one project, and re-registering it re-seeds nothing.
-            var team = await teams.SeedDefaultTeamAsync(existing.Id, orgId, cancellationToken);
+            var team = await teams.SeedDefaultTeamAsync(existing.Id, orgId, TestCommandFor(workspace.StackHints), cancellationToken);
             return new ProjectRegistration(existing, team, registration);
         }
 
-        var workspace = ReadWorkspaceConfig(registration.Live);
         var desired = ProjectNaming.Slugify(name ?? workspace.Name ?? registration.Live.Name);
 
         var taken = (await db.Projects.AsNoTracking()
@@ -69,7 +70,7 @@ public sealed class ProjectService(DarkFactoryDbContext db, ServerRegistry regis
         db.Projects.Add(project);
         await db.SaveChangesAsync(cancellationToken);
 
-        var seeded = await teams.SeedDefaultTeamAsync(project.Id, orgId, cancellationToken);
+        var seeded = await teams.SeedDefaultTeamAsync(project.Id, orgId, TestCommandFor(project.StackHints), cancellationToken);
         return new ProjectRegistration(project, seeded, registration);
     }
 
@@ -111,4 +112,31 @@ public sealed class ProjectService(DarkFactoryDbContext db, ServerRegistry regis
     }
 
     private sealed record WorkspaceConfig(string? Name, string? Root, string[] StackHints);
+
+    /// <summary>
+    /// A first guess at how this stack runs its tests, from what the
+    /// workspace server reported about itself (docs/adr/0013). It is a
+    /// guess: the team owns the command and a human can change it, which is
+    /// why it lives on the team rather than being inferred at verify time.
+    ///
+    /// No hint we recognise means no command, and `verify` then fails as
+    /// needs_human rather than inventing one — a stage that passes because
+    /// it found nothing to run is worse than one that admits it is not
+    /// configured.
+    /// </summary>
+    public static string? TestCommandFor(IReadOnlyList<string> stackHints)
+    {
+        foreach (var hint in stackHints)
+        {
+            switch (hint)
+            {
+                case "dotnet": return "dotnet test --nologo";
+                case "node": case "typescript": case "nextjs": return "npm test";
+                case "python": return "pytest";
+                case "go": return "go test ./...";
+                case "rust": return "cargo test";
+            }
+        }
+        return null;
+    }
 }

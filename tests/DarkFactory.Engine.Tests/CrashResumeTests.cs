@@ -83,6 +83,11 @@ public class CrashResumeTests(EngineTestFixture fixture)
         startInfo.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:0";
         startInfo.Environment["ConnectionStrings__DarkFactory"] = fixture.ConnectionString;
         startInfo.Environment["Engine__WorkerId"] = workerId;
+        // The durability mechanics are what is under test here, not the
+        // agents: stub handlers keep this test free of a model provider
+        // and a workspace server, either of which would make a crash
+        // test depend on something that is not the crash.
+        startInfo.Environment["Engine__StageHandlers"] = "stub";
         startInfo.Environment["Engine__LeaseDurationSeconds"] = "30";
         startInfo.Environment["Engine__PollIntervalSeconds"] = "0.2";
         if (crashAfterStage is not null)

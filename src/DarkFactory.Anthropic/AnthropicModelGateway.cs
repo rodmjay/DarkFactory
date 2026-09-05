@@ -73,7 +73,7 @@ public sealed class AnthropicModelGateway : IModelGateway
         {
             Model = model,
             MaxTokens = request.MaxOutputTokens,
-            System = request.SystemPrompt,
+            System = BuildSystem(request),
             Temperature = request.Temperature,
             Messages = request.Messages
                 .Select(m => new MessagesRequestMessage
@@ -153,6 +153,37 @@ public sealed class AnthropicModelGateway : IModelGateway
     /// provider asking us to come back; 401 and 403 are configuration a
     /// person has to fix; the rest is us being wrong.
     /// </summary>
+    /// <summary>
+    /// The system prompt as content blocks, with a cache breakpoint after
+    /// the stable prefix when the caller supplied one.
+    ///
+    /// This is the difference between <c>input_tokens_cached</c> being a
+    /// real number and being zero forever (docs/adr/0032) — and it is the
+    /// column the optimization work will care about most, because it is the
+    /// one that separates "this prompt is big" from "this prompt is
+    /// expensive".
+    /// </summary>
+    private static List<SystemBlock> BuildSystem(ModelRequest request)
+    {
+        var blocks = new List<SystemBlock>();
+
+        if (!string.IsNullOrWhiteSpace(request.CacheableSystemPrefix))
+        {
+            blocks.Add(new SystemBlock
+            {
+                Text = request.CacheableSystemPrefix,
+                CacheControl = new CacheControl(),
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
+        {
+            blocks.Add(new SystemBlock { Text = request.SystemPrompt });
+        }
+
+        return blocks;
+    }
+
     private static FailureClass Classify(HttpStatusCode status) => status switch
     {
         HttpStatusCode.TooManyRequests => FailureClass.Retryable,
@@ -182,9 +213,21 @@ public sealed class AnthropicModelGateway : IModelGateway
     {
         [JsonPropertyName("model")] public required string Model { get; init; }
         [JsonPropertyName("max_tokens")] public required int MaxTokens { get; init; }
-        [JsonPropertyName("system")] public string? System { get; init; }
+        [JsonPropertyName("system")] public required List<SystemBlock> System { get; init; }
         [JsonPropertyName("temperature")] public double? Temperature { get; init; }
         [JsonPropertyName("messages")] public required List<MessagesRequestMessage> Messages { get; init; }
+    }
+
+    private sealed class SystemBlock
+    {
+        [JsonPropertyName("type")] public string Type => "text";
+        [JsonPropertyName("text")] public required string? Text { get; init; }
+        [JsonPropertyName("cache_control")] public CacheControl? CacheControl { get; init; }
+    }
+
+    private sealed class CacheControl
+    {
+        [JsonPropertyName("type")] public string Type => "ephemeral";
     }
 
     private sealed class MessagesRequestMessage

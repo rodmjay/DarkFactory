@@ -16,6 +16,9 @@ namespace DarkFactory.Data;
 /// </summary>
 public static class ArchitectPrompt
 {
+    /// <summary>Bumped when the prompt changes, so docs/adr/0032 can attribute outcomes to a template.</summary>
+    public const string TemplateVersion = "architect/1";
+
     /// <summary>
     /// The built-in skill the architect runs with, until the skills tables
     /// exist (docs/adr/0028; 3d). Recorded in the ContextPack so what the
@@ -66,7 +69,17 @@ public static class ArchitectPrompt
               retrieval.
             """);
 
-    public static string SystemPrompt(ContextPack pack)
+    /// <summary>
+    /// The half of the system prompt that does not change within a run:
+    /// skills, standards, and the response contract including the schema.
+    /// Sent with a cache breakpoint after it (docs/adr/0032), so a
+    /// conversation's repeated calls pay for it once.
+    ///
+    /// The split has to be honest — anything in here that actually varies
+    /// misses the cache on every call — so the spec neighbourhood, which
+    /// changes the moment an amendment lands, is deliberately not here.
+    /// </summary>
+    public static string CacheablePrefix(ContextPack pack)
     {
         var builder = new StringBuilder();
 
@@ -86,6 +99,42 @@ public static class ArchitectPrompt
             builder.AppendLine(standard.Text);
             builder.AppendLine();
         }
+
+        builder.AppendLine("## How to answer");
+        builder.AppendLine();
+        builder.AppendLine("Reply with a single JSON object and nothing else. No prose before or after, no code fence.");
+        builder.AppendLine();
+        builder.AppendLine("""
+            {
+              "reply": "your message to the user, in markdown",
+              "settled": false,
+              "diff": null
+            }
+            """);
+        builder.AppendLine();
+        builder.AppendLine("Set \"settled\" to true and supply \"diff\" only when the conversation has reached a");
+        builder.AppendLine("concrete change to the specifications. The diff must match this schema exactly:");
+        builder.AppendLine();
+        builder.AppendLine(SpecDiffSchema.SchemaText);
+        builder.AppendLine();
+        builder.AppendLine("""
+            Rules for the diff:
+            - You do not assign spec ids. Omit them for new nodes; the factory assigns them.
+            - Only reference spec ids listed under "Current specifications". Do not invent one.
+            - To connect a node you are creating in this same diff, use "new:N", where N is its
+              zero-based index in "creates".
+            - Every array must be present, even when empty.
+            """);
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// The half that changes: what the graph actually says right now.
+    /// </summary>
+    public static string SystemPrompt(ContextPack pack)
+    {
+        var builder = new StringBuilder();
 
         builder.AppendLine("## Current specifications");
         if (pack.SpecNeighborhood.Count == 0)
@@ -111,32 +160,6 @@ public static class ArchitectPrompt
             }
             builder.AppendLine();
         }
-
-        builder.AppendLine("## How to answer");
-        builder.AppendLine();
-        builder.AppendLine("Reply with a single JSON object and nothing else. No prose before or after, no code fence.");
-        builder.AppendLine();
-        builder.AppendLine("""
-            {
-              "reply": "your message to the user, in markdown",
-              "settled": false,
-              "diff": null
-            }
-            """);
-        builder.AppendLine();
-        builder.AppendLine("Set \"settled\" to true and supply \"diff\" only when the conversation has reached a");
-        builder.AppendLine("concrete change to the specifications. The diff must match this schema exactly:");
-        builder.AppendLine();
-        builder.AppendLine(SpecDiffSchema.SchemaText);
-        builder.AppendLine();
-        builder.AppendLine("""
-            Rules for the diff:
-            - You do not assign spec ids. Omit them for new nodes; the factory assigns them.
-            - Only reference spec ids listed under "Current specifications" above. Do not invent one.
-            - To connect a node you are creating in this same diff, use "new:N", where N is its
-              zero-based index in "creates".
-            - Every array must be present, even when empty.
-            """);
 
         return builder.ToString();
     }

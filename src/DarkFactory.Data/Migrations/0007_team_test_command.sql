@@ -1,0 +1,11 @@
+-- docs/adr/0022: `verify` runs the team's declared test command.
+--
+-- Team-level rather than project-level, because it is a statement about how
+-- this team judges its own work — and because a standards server shipping a
+-- team template (docs/adr/0028) ships one with it.
+--
+-- Nullable on purpose. A team that has not declared a test command makes
+-- `verify` fail as needs_human, which is the honest outcome: a verify stage
+-- that reports success because it found nothing to run is worse than one
+-- that admits it is not configured.
+ALTER TABLE teams ADD COLUMN test_command text;

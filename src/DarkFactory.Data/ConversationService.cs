@@ -117,7 +117,13 @@ public sealed class ConversationService(
 
         var messages = await BuildMessagesAsync(conversationId, cancellationToken);
         var completion = await gateway.CompleteAsync(
-            new ModelRequest(agent.Deployment, ArchitectPrompt.SystemPrompt(pack), messages), cancellationToken);
+            new ModelRequest(
+                agent.Deployment,
+                ArchitectPrompt.SystemPrompt(pack),
+                messages,
+                Context: CallContext(conversation, agent, packRef, attempt: 1),
+                CacheableSystemPrefix: ArchitectPrompt.CacheablePrefix(pack)),
+            cancellationToken);
 
         var usage = completion.Usage;
         var parsed = ParseResponse(completion.Text);
@@ -139,7 +145,12 @@ public sealed class ConversationService(
                 ArchitectPrompt.RetryMessage(completion.Text, validation.Result)));
 
             var retry = await gateway.CompleteAsync(
-                new ModelRequest(agent.Deployment, ArchitectPrompt.SystemPrompt(retryPack), retryMessages),
+                new ModelRequest(
+                    agent.Deployment,
+                    ArchitectPrompt.SystemPrompt(retryPack),
+                    retryMessages,
+                    Context: CallContext(conversation, agent, packRef, attempt: 2, retried: true),
+                    CacheableSystemPrefix: ArchitectPrompt.CacheablePrefix(retryPack)),
                 cancellationToken);
 
             usage = new ModelUsage(
@@ -207,6 +218,26 @@ public sealed class ConversationService(
 
         return new ConversationTurnResult(assistantTurn.Id, payloads, amendmentId, packRef, usage);
     }
+
+    /// <summary>
+    /// What docs/adr/0032 records against the call. A conversational turn
+    /// has no run, no batch and no stage — those columns stay null rather
+    /// than being invented, because a fact table with honest nulls beats
+    /// one whose dimensions cannot be trusted.
+    /// </summary>
+    private static ModelCallContext CallContext(
+        Conversation conversation, ResolvedAgent agent, string packRef, int attempt, bool? retried = null) =>
+        new()
+        {
+            OrgId = conversation.OrgId,
+            ProjectId = conversation.ProjectId,
+            StageId = AssignmentPoints.Conversation,
+            Attempt = attempt,
+            TeamMemberId = agent.TeamMemberId,
+            ContextPackRef = packRef,
+            PromptTemplateVersion = ArchitectPrompt.TemplateVersion,
+            Retried = retried,
+        };
 
     // ---- context assembly -------------------------------------------------
 
