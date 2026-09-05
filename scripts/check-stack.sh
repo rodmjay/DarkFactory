@@ -39,6 +39,33 @@ cleanup() {
     fi
 }
 
+# ---------------------------------------------------------------------------
+# Credentials, before anything expensive
+# ---------------------------------------------------------------------------
+#
+# First because it takes about four seconds, and because it is the one
+# failure here that nothing else can compensate for: a stack that comes up
+# perfectly with a key in its history is not publishable. Aborting rather
+# than folding into the summary at the end, so the message is the last thing
+# on screen instead of being buried under five minutes of Docker output.
+#
+# scripts/hooks/pre-push runs the same script, for anyone who has enabled it
+# (git config core.hooksPath scripts/hooks). Both, deliberately: the hook is
+# opt-in per clone and so cannot be relied on, and this script is the gate
+# the README already requires before committing to main.
+say "Credentials"
+if [ ! -f "$(dirname "$0")/check-secrets.sh" ]; then
+    # Not skipped when absent. Skipping is how a gate disappears: the run
+    # stays green, the missing scan looks identical to a clean one, and the
+    # first anyone knows is after a push.
+    fail "scripts/check-secrets.sh is missing — nothing scanned for credentials."
+    exit 1
+fi
+if ! bash "$(dirname "$0")/check-secrets.sh" | sed 's/^/  /'; then
+    printf '\n\033[31mStopping before the stack check — fix this first.\033[0m\n' >&2
+    exit 1
+fi
+
 # Every service Compose knows about, so adding one to docker-compose.yml
 # automatically adds it to this check rather than requiring someone to
 # remember a second list.
@@ -66,9 +93,23 @@ if ! docker compose up -d > "$up_log" 2>&1; then
     # looking for a bug that is not there. Every host publish is
     # configurable precisely because a developer machine runs several
     # stacks at once.
+    # Docker Desktop only bind-mounts paths it has been given access to, and
+    # workspace-demo mounts the repo. A checkout outside those paths fails
+    # with a message about the daemon rather than about the checkout.
+    if grep -qi 'mounts denied' "$up_log"; then
+        printf '\n\033[33mThis is Docker file sharing, not a problem with the code.\033[0m\n' >&2
+        printf 'workspace-demo bind-mounts this repository, so the checkout has to sit under a\n' >&2
+        printf 'path Docker is allowed to share (Docker Desktop -> Resources -> File Sharing).\n' >&2
+    fi
+
     if grep -qiE 'port is already allocated|address already in use|ports are not available' "$up_log"; then
         printf '\n\033[33mThis is a host port collision, not a problem with the code.\033[0m\n' >&2
-        grep -oiE '(0\.0\.0\.0|127\.0\.0\.1):[0-9]+' "$up_log" | sort -u | sed 's/^/  in use: /' >&2
+        # :0 is dropped because the daemon's message reads
+        # "exposing port TCP 0.0.0.0:5432 -> 127.0.0.1:0", and listing the
+        # target side as a port in use sends people looking for a conflict
+        # on a port that does not exist.
+        grep -oiE '(0\.0\.0\.0|127\.0\.0\.1):[0-9]+' "$up_log" \
+            | grep -v ':0$' | sort -u | sed 's/^/  in use: /' >&2
         printf 'Set the matching override in .env and re-run:\n' >&2
         printf '  POSTGRES_PORT  FACTORY_PORT  DASHBOARD_PORT  WORKSPACE_DEMO_PORT\n' >&2
     fi
@@ -123,6 +164,21 @@ check_web() {
     local log port
     log=$(mktemp)
     port=${WEB_SMOKE_PORT:-14999}
+
+    # A clean checkout has no node_modules, and this check is the one thing
+    # in the repo whose whole purpose is to work from a clean checkout. An
+    # error message telling the reader to run pnpm install is honest and
+    # still the wrong answer: the gate knows what it needs, so it installs
+    # it — the same reason the test fixture builds the reference server
+    # rather than telling you to.
+    if [ ! -d node_modules ] || [ ! -d dashboard/node_modules ]; then
+        printf '  installing workspace dependencies (first run in this checkout)\n'
+        if ! pnpm install --frozen-lockfile > "$log" 2>&1; then
+            tail -15 "$log"; rm -f "$log"
+            fail "pnpm install --frozen-lockfile"
+            return 1
+        fi
+    fi
 
     if ! pnpm --filter dashboard build > "$log" 2>&1; then
         tail -15 "$log"; rm -f "$log"

@@ -20,3 +20,8 @@ npm-debug.log*
 # Playwright
 test-results/
 playwright-report/
+
+# scripts/check-secrets.sh staging area. Must stay ignored: the script
+# assembles the committable file set here, and an un-ignored staging dir
+# would be part of that set and would flag its own planted canary.
+.secret-scan-tmp/

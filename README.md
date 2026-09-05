@@ -219,8 +219,26 @@ it does not work, and a standalone server without its static copy returns
 200 with a clean log and a blank white page. Each assertion exists because
 the one before it went green on a broken thing.
 
+It also refuses to go further if anything in the repository looks like a
+credential — `scripts/check-secrets.sh`, run first because it takes about
+four seconds and because it is the one failure here that a green stack
+cannot compensate for. It scans the files that could be committed and every
+commit on every branch, since deleting a key in a later commit does not
+remove the object that `git push` publishes.
+
+The same script backs a pre-push hook, which is worth enabling once per
+clone — it is the last point where the cheap fix still works:
+
+```sh
+git config core.hooksPath scripts/hooks
+```
+
 Which is the repo's rule about checks generally: **no check counts until it
-has been shown to fail against planted breakage.** See
+has been shown to fail against planted breakage.** The secret scan plants a
+synthetic key on *every* run and fails if the scanner does not flag it,
+because a scanner that has quietly stopped matching is indistinguishable
+from a clean repository — and the first version of it had exactly that
+fault, with a canary the rule never matched. See
 [docs/TESTING.md](docs/TESTING.md) for the rule, the evidence behind it, and
 the four steps. [SESSIONS.md](SESSIONS.md) covers who owns what while several
 sessions are working here at once.

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#
+# Blocks a push that would publish a credential.
+#
+# Pre-push rather than pre-commit on purpose. A local commit containing a
+# key is recoverable — amend, reset, rebase, and nobody else ever saw it.
+# A push is not: the objects are on a server the moment it succeeds, and
+# from then on the only real remedy is rotating the credential. Pre-push is
+# the last point where the cheap fix still works.
+#
+# Enable it (once per clone, since git does not ship hooks with a repo):
+#
+#     git config core.hooksPath scripts/hooks
+#
+# Bypass, when you know why:  git push --no-verify
+
+set -uo pipefail
+
+repo=$(git rev-parse --show-toplevel)
+
+# Fails closed. An earlier version warned and exited 0 when the script was
+# missing, which disarms the gate exactly when something is wrong with the
+# checkout — a lost exec bit, a bad merge, a stale worktree — and does it
+# silently enough to be missed in the noise of a push. A gate that lets a
+# push through because it could not run is not a gate.
+#
+# Invoked through bash rather than executed, so that a missing exec bit
+# (a fresh clone on a filesystem without one, say) scans instead of
+# refusing. Absence is a refusal; a permission bit is not.
+if [ ! -f "$repo/scripts/check-secrets.sh" ]; then
+    printf '\n\033[31mPush refused: scripts/check-secrets.sh is missing, so nothing scanned\n' >&2
+    printf 'this push for credentials.\033[0m\n\n' >&2
+    printf 'Restore it, or push with --no-verify if you have scanned another way.\n' >&2
+    exit 1
+fi
+
+printf '\033[1mpre-push: scanning for credentials\033[0m\n' >&2
+
+if bash "$repo/scripts/check-secrets.sh" >&2; then
+    exit 0
+fi
+
+printf '\n\033[31mPush refused: this repository contains something that looks like a\n' >&2
+printf 'credential.\033[0m\n\n' >&2
+printf 'If it is real, rotate it first — deleting it from a later commit does\n' >&2
+printf 'not remove it from the objects being pushed.\n' >&2
+printf 'If it is a false positive, add a narrow allowlist entry to a\n' >&2
+printf '.gitleaks.toml and say in the commit message why it is safe.\n' >&2
+printf 'To push anyway: git push --no-verify\n' >&2
+
+exit 1
