@@ -7,17 +7,17 @@ export default async function ProjectsPage() {
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
       <section className="mb-8">
-        <h2 className="mb-2 text-sm font-medium text-neutral-400">
+        <h2 className="mb-2 text-sm font-medium text-secondary">
           What&apos;s happening right now
         </h2>
         {activeRuns === null ? (
           <ApiNotWiredNotice endpoint="GET /api/runs?status=active" />
         ) : activeRuns.length === 0 ? (
-          <p className="text-sm text-neutral-500">No active runs.</p>
+          <p className="text-sm text-muted">No active runs.</p>
         ) : (
           <ul className="space-y-2">
             {activeRuns.map((run) => (
-              <li key={run.id} className="rounded border border-neutral-800 px-3 py-2 text-sm">
+              <li key={run.id} className="rounded border border-border px-3 py-2 text-sm">
                 <Link href={`/runs/${run.id}`} className="hover:underline">
                   {run.id}
                 </Link>{" "}
@@ -33,18 +33,18 @@ export default async function ProjectsPage() {
         {projects === null ? (
           <ApiNotWiredNotice endpoint="GET /api/projects" />
         ) : projects.length === 0 ? (
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-muted">
             No projects registered yet. Run <code>projects.register(...)</code> from a connected
             host.
           </p>
         ) : (
           <ul className="space-y-2">
             {projects.map((project) => (
-              <li key={project.id} className="rounded border border-neutral-800 px-3 py-2">
+              <li key={project.id} className="rounded border border-border px-3 py-2">
                 <Link href={`/projects/${project.id}`} className="font-medium hover:underline">
                   {project.name}
                 </Link>
-                <span className="ml-2 text-sm text-neutral-500">
+                <span className="ml-2 text-sm text-muted">
                   {project.activeRunCount} active run{project.activeRunCount === 1 ? "" : "s"}
                 </span>
               </li>
@@ -58,7 +58,7 @@ export default async function ProjectsPage() {
 
 function ApiNotWiredNotice({ endpoint }: { endpoint: string }) {
   return (
-    <p className="rounded border border-dashed border-neutral-800 px-3 py-2 text-sm text-neutral-500">
+    <p className="rounded border border-dashed border-border px-3 py-2 text-sm text-muted">
       {endpoint} isn&apos;t implemented yet — the front MCP surface and REST facade land in a
       later step. This page will populate once the factory API is reachable.
     </p>

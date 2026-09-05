@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Placeholder portrait">
+  <rect width="64" height="64" fill="oklch(0.272 0.062 285)"/>
+  <circle cx="32" cy="25" r="11" fill="oklch(0.706 0.158 285)"/>
+  <path d="M8 64c0-13.3 10.7-24 24-24s24 10.7 24 24z" fill="oklch(0.706 0.158 285)"/>
+</svg>

@@ -1,0 +1,647 @@
+/* ---------------------------------------------------------------------------
+ * Dark Factory design tokens — ADR-0033.
+ *
+ * Every colour used anywhere in the product is defined here, once, as a
+ * semantic name. Nothing downstream is allowed to name a raw colour: the
+ * `@theme` reset at the bottom of this file deletes Tailwind's default
+ * palette, so `bg-gray-800` is not a class that exists. That is deliberate —
+ * a design system enforced only by review is a design system that drifts.
+ *
+ * Two themes. Dark is primary (the product is a console a lead lives in);
+ * light is a complete, equally-finished second theme, not an afterthought.
+ * Light lives on `:root`, dark on `.dark`, so a subtree can be flipped by
+ * adding the class — which is how the showcase renders both at once.
+ *
+ * Colours are authored in OKLCH. Perceptual lightness is the axis that
+ * contrast lives on, so holding L fixed across a row of hues gives a set of
+ * status colours that genuinely read as equally loud.
+ * ------------------------------------------------------------------------ */
+
+:root,
+.light {
+  /* -- Typography -----------------------------------------------------------
+   * The package names the font tokens; the app supplies the actual faces
+   * (Next's next/font sets --font-instrument-sans / --font-ibm-plex-mono).
+   * The fallbacks make the package render sensibly with no app wiring.
+   */
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, "SF Mono",
+    "Cascadia Mono", Menlo, Consolas, monospace;
+
+  /* -- Neutral ramp: warm, hue 70 ------------------------------------------
+   * Low chroma, never zero. Pure gray reads as "unfinished screen"; a warm
+   * ramp reads as ink on paper and lets the cool iris accent sit against it
+   * without either fighting the other.
+   */
+  --df-n-0: oklch(0.995 0.002 70);
+  --df-n-25: oklch(0.983 0.003 70);
+  --df-n-50: oklch(0.972 0.004 70);
+  --df-n-100: oklch(0.948 0.005 70);
+  --df-n-200: oklch(0.906 0.006 70);
+  --df-n-300: oklch(0.848 0.007 70);
+  --df-n-400: oklch(0.712 0.008 70);
+  --df-n-500: oklch(0.582 0.009 70);
+  --df-n-600: oklch(0.487 0.010 70);
+  --df-n-700: oklch(0.392 0.010 70);
+  --df-n-800: oklch(0.298 0.009 70);
+  --df-n-900: oklch(0.222 0.008 70);
+  --df-n-950: oklch(0.168 0.007 70);
+  --df-n-1000: oklch(0.128 0.006 70);
+
+  /* -- Surfaces ------------------------------------------------------------- */
+  --surface-page: var(--df-n-50);
+  --surface-card: var(--df-n-0);
+  --surface-raised: oklch(1 0 0);
+  --surface-overlay: var(--df-n-0);
+  --surface-sunken: var(--df-n-100);
+  --border: var(--df-n-200);
+  --border-strong: var(--df-n-300);
+  /* The dim behind a dialog or sheet. A token, not an inline colour: it is
+   * the one surface that has to differ per theme by opacity as well as hue. */
+  --scrim: oklch(0.222 0.008 70 / 0.42);
+  /* A form control's boundary is the only thing identifying it, so this one
+   * carries a real 3:1 obligation (WCAG 1.4.11) and is heavier than the
+   * hairlines used for grouping. */
+  --border-control: oklch(0.618 0.010 70);
+
+  /* -- Text ----------------------------------------------------------------- */
+  --text-primary: var(--df-n-900);
+  --text-secondary: var(--df-n-600);
+  --text-muted: oklch(0.528 0.010 70);
+  --text-inverse: var(--df-n-25);
+
+  /* -- Accent: iris. Actions the user must take, and nothing else. ---------- */
+  --accent: oklch(0.512 0.196 285);
+  --accent-hover: oklch(0.452 0.190 285);
+  --accent-text: oklch(0.470 0.196 285);
+  --accent-fill: oklch(0.955 0.028 285);
+  --accent-border: oklch(0.790 0.090 285);
+  --accent-fg: oklch(0.995 0.005 285);
+  --accent-ring: oklch(0.585 0.185 285);
+
+  /* -- Stage status ---------------------------------------------------------
+   * pending / running are quiet; passed is calm; parked and over-budget are
+   * the accent's family because they are the two states that mean "a person
+   * is required"; failed is red and deliberately nothing like parked —
+   * "the machine broke" and "the agent is waiting on you" are different days.
+   */
+  --status-pending-fill: var(--df-n-100);
+  --status-pending-border: var(--df-n-300);
+  --status-pending-text: oklch(0.500 0.009 70);
+
+  --status-running-fill: oklch(0.952 0.020 245);
+  --status-running-border: oklch(0.790 0.060 245);
+  --status-running-text: oklch(0.480 0.110 245);
+
+  --status-passed-fill: oklch(0.952 0.030 150);
+  --status-passed-border: oklch(0.780 0.080 150);
+  --status-passed-text: oklch(0.442 0.105 150);
+
+  --status-parked-fill: oklch(0.955 0.028 285);
+  --status-parked-border: oklch(0.790 0.090 285);
+  --status-parked-text: oklch(0.470 0.196 285);
+
+  --status-failed-fill: oklch(0.955 0.028 27);
+  --status-failed-border: oklch(0.800 0.090 27);
+  --status-failed-text: oklch(0.478 0.170 27);
+
+  --status-over-budget-fill: oklch(0.955 0.030 330);
+  --status-over-budget-border: oklch(0.795 0.095 330);
+  --status-over-budget-text: oklch(0.470 0.185 330);
+
+  /* -- Spec layers ----------------------------------------------------------
+   * Five quiet hues at a fraction of the status chroma, so a row of layer
+   * badges reads as a legend rather than as five competing alerts. `other`
+   * is the fallback: `layer` is an open string in specdiff.schema.json —
+   * customers' standards servers declare their own layers.
+   */
+  --layer-product-fill: oklch(0.948 0.022 15);
+  --layer-product-border: oklch(0.855 0.048 15);
+  --layer-product-text: oklch(0.462 0.098 15);
+
+  --layer-api-fill: oklch(0.948 0.028 70);
+  --layer-api-border: oklch(0.850 0.058 70);
+  --layer-api-text: oklch(0.452 0.078 70);
+
+  --layer-data-fill: oklch(0.948 0.024 150);
+  --layer-data-border: oklch(0.848 0.050 150);
+  --layer-data-text: oklch(0.442 0.072 150);
+
+  --layer-infra-fill: oklch(0.948 0.022 215);
+  --layer-infra-border: oklch(0.850 0.046 215);
+  --layer-infra-text: oklch(0.452 0.075 215);
+
+  --layer-ui-fill: oklch(0.948 0.024 295);
+  --layer-ui-border: oklch(0.855 0.050 295);
+  --layer-ui-text: oklch(0.462 0.100 295);
+
+  --layer-other-fill: var(--df-n-100);
+  --layer-other-border: var(--df-n-300);
+  --layer-other-text: oklch(0.500 0.009 70);
+
+  /* -- Diff -----------------------------------------------------------------
+   * conflict is the loudest thing the system can draw. It is the one place
+   * we spend maximum chroma, because "this contradicts the rule you set in
+   * March" is the single most valuable sentence the product says.
+   */
+  --diff-added-fill: oklch(0.948 0.038 150);
+  --diff-added-border: oklch(0.780 0.085 150);
+  --diff-added-text: oklch(0.442 0.105 150);
+  --diff-added-marker: oklch(0.560 0.130 150);
+
+  --diff-removed-fill: oklch(0.950 0.032 27);
+  --diff-removed-border: oklch(0.800 0.090 27);
+  --diff-removed-text: oklch(0.478 0.170 27);
+  --diff-removed-marker: oklch(0.585 0.180 27);
+
+  --diff-changed-fill: oklch(0.955 0.040 85);
+  --diff-changed-border: oklch(0.820 0.085 85);
+  --diff-changed-text: oklch(0.452 0.098 85);
+  --diff-changed-marker: oklch(0.612 0.128 85);
+
+  --diff-conflict-fill: oklch(0.930 0.058 340);
+  --diff-conflict-border: oklch(0.640 0.200 340);
+  --diff-conflict-text: oklch(0.448 0.215 340);
+  --diff-conflict-marker: oklch(0.560 0.245 340);
+
+  /* -- Server health --------------------------------------------------------
+   * unreachable is neutral on purpose: a server we cannot reach is usually a
+   * network fact, not a fault, and colouring it red trains people to ignore
+   * red.
+   */
+  --server-conformant-fill: oklch(0.952 0.030 150);
+  --server-conformant-border: oklch(0.780 0.080 150);
+  --server-conformant-text: oklch(0.442 0.105 150);
+
+  --server-degraded-fill: oklch(0.955 0.040 85);
+  --server-degraded-border: oklch(0.820 0.085 85);
+  --server-degraded-text: oklch(0.452 0.098 85);
+
+  --server-unreachable-fill: var(--df-n-100);
+  --server-unreachable-border: var(--df-n-400);
+  --server-unreachable-text: oklch(0.500 0.009 70);
+
+  /* -- Focus --------------------------------------------------------------- */
+  --focus-ring: var(--accent-ring);
+  --focus-ring-offset: var(--surface-card);
+
+  /* -- Selection ----------------------------------------------------------- */
+  --selection-bg: oklch(0.900 0.060 285);
+  --selection-fg: var(--text-primary);
+
+  /* -- shadcn compatibility aliases ----------------------------------------
+   * shadcn components are copied into this package and restyled, but they
+   * are copied from upstream and re-copied when upstream fixes a bug. These
+   * aliases mean an unmodified upstream component still lands on our palette
+   * instead of on a colour nobody chose.
+   */
+  --background: var(--surface-page);
+  --foreground: var(--text-primary);
+  --card: var(--surface-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-overlay);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --secondary: var(--df-n-100);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--df-n-100);
+  --muted-foreground: var(--text-muted);
+  --destructive: oklch(0.545 0.190 27);
+  --destructive-foreground: oklch(0.995 0.005 27);
+  --input: var(--border-control);
+  --ring: var(--focus-ring);
+}
+
+.dark {
+  /* Dark is the primary theme. The page is a warm near-black — ink, not
+   * charcoal — and the surface ramp climbs by lightness only, so elevation
+   * reads without a single shadow being drawn. */
+  --surface-page: oklch(0.158 0.006 70);
+  --surface-card: oklch(0.196 0.007 70);
+  --surface-raised: oklch(0.232 0.008 70);
+  --surface-overlay: oklch(0.226 0.008 70);
+  --surface-sunken: oklch(0.132 0.005 70);
+  --scrim: oklch(0.098 0.004 70 / 0.72);
+  --border: oklch(0.288 0.008 70);
+  --border-strong: oklch(0.392 0.009 70);
+  --border-control: oklch(0.500 0.010 70);
+
+  --text-primary: oklch(0.958 0.004 70);
+  --text-secondary: oklch(0.790 0.007 70);
+  --text-muted: oklch(0.648 0.008 70);
+  --text-inverse: oklch(0.168 0.007 70);
+
+  --accent: oklch(0.706 0.158 285);
+  --accent-hover: oklch(0.762 0.150 285);
+  --accent-text: oklch(0.792 0.126 285);
+  --accent-fill: oklch(0.272 0.062 285);
+  --accent-border: oklch(0.452 0.118 285);
+  --accent-fg: oklch(0.168 0.030 285);
+  --accent-ring: oklch(0.740 0.148 285);
+
+  --status-pending-fill: oklch(0.238 0.006 70);
+  --status-pending-border: oklch(0.332 0.007 70);
+  --status-pending-text: oklch(0.712 0.008 70);
+
+  --status-running-fill: oklch(0.258 0.036 245);
+  --status-running-border: oklch(0.424 0.068 245);
+  --status-running-text: oklch(0.812 0.070 245);
+
+  --status-passed-fill: oklch(0.252 0.046 150);
+  --status-passed-border: oklch(0.414 0.078 150);
+  --status-passed-text: oklch(0.822 0.128 150);
+
+  --status-parked-fill: oklch(0.272 0.062 285);
+  --status-parked-border: oklch(0.452 0.118 285);
+  --status-parked-text: oklch(0.822 0.118 285);
+
+  --status-failed-fill: oklch(0.262 0.058 27);
+  --status-failed-border: oklch(0.436 0.112 27);
+  --status-failed-text: oklch(0.812 0.118 27);
+
+  --status-over-budget-fill: oklch(0.268 0.064 330);
+  --status-over-budget-border: oklch(0.448 0.120 330);
+  --status-over-budget-text: oklch(0.818 0.124 330);
+
+  --layer-product-fill: oklch(0.252 0.030 15);
+  --layer-product-border: oklch(0.372 0.056 15);
+  --layer-product-text: oklch(0.812 0.076 15);
+
+  --layer-api-fill: oklch(0.252 0.028 70);
+  --layer-api-border: oklch(0.368 0.052 70);
+  --layer-api-text: oklch(0.818 0.070 70);
+
+  --layer-data-fill: oklch(0.250 0.028 150);
+  --layer-data-border: oklch(0.366 0.050 150);
+  --layer-data-text: oklch(0.815 0.070 150);
+
+  --layer-infra-fill: oklch(0.252 0.028 215);
+  --layer-infra-border: oklch(0.370 0.052 215);
+  --layer-infra-text: oklch(0.818 0.066 215);
+
+  --layer-ui-fill: oklch(0.254 0.030 295);
+  --layer-ui-border: oklch(0.374 0.058 295);
+  --layer-ui-text: oklch(0.815 0.078 295);
+
+  --layer-other-fill: oklch(0.238 0.006 70);
+  --layer-other-border: oklch(0.332 0.007 70);
+  --layer-other-text: oklch(0.712 0.008 70);
+
+  --diff-added-fill: oklch(0.256 0.052 150);
+  --diff-added-border: oklch(0.414 0.082 150);
+  --diff-added-text: oklch(0.822 0.128 150);
+  --diff-added-marker: oklch(0.712 0.140 150);
+
+  --diff-removed-fill: oklch(0.264 0.060 27);
+  --diff-removed-border: oklch(0.436 0.112 27);
+  --diff-removed-text: oklch(0.812 0.118 27);
+  --diff-removed-marker: oklch(0.702 0.160 27);
+
+  --diff-changed-fill: oklch(0.262 0.048 85);
+  --diff-changed-border: oklch(0.420 0.078 85);
+  --diff-changed-text: oklch(0.842 0.110 85);
+  --diff-changed-marker: oklch(0.780 0.130 85);
+
+  --diff-conflict-fill: oklch(0.302 0.098 340);
+  --diff-conflict-border: oklch(0.612 0.212 340);
+  --diff-conflict-text: oklch(0.842 0.140 340);
+  --diff-conflict-marker: oklch(0.688 0.238 340);
+
+  --server-conformant-fill: oklch(0.252 0.046 150);
+  --server-conformant-border: oklch(0.414 0.078 150);
+  --server-conformant-text: oklch(0.822 0.128 150);
+
+  --server-degraded-fill: oklch(0.262 0.048 85);
+  --server-degraded-border: oklch(0.420 0.078 85);
+  --server-degraded-text: oklch(0.842 0.110 85);
+
+  --server-unreachable-fill: oklch(0.238 0.006 70);
+  --server-unreachable-border: oklch(0.406 0.008 70);
+  --server-unreachable-text: oklch(0.712 0.008 70);
+
+  --focus-ring: var(--accent-ring);
+  --focus-ring-offset: var(--surface-page);
+
+  --selection-bg: oklch(0.398 0.118 285);
+  --selection-fg: oklch(0.975 0.006 70);
+
+  --background: var(--surface-page);
+  --foreground: var(--text-primary);
+  --card: var(--surface-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-overlay);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --secondary: oklch(0.238 0.006 70);
+  --secondary-foreground: var(--text-primary);
+  --muted: oklch(0.238 0.006 70);
+  --muted-foreground: var(--text-muted);
+  --destructive: oklch(0.545 0.196 27);
+  --destructive-foreground: oklch(0.985 0.005 27);
+  --input: var(--border-control);
+  --ring: var(--focus-ring);
+}
+
+/* ---------------------------------------------------------------------------
+ * Shape, elevation and motion.
+ * ------------------------------------------------------------------------ */
+
+:root,
+.light {
+  /* Three radii, no more. Controls, containers, pills. */
+  --radius-control: 0.375rem;
+  --radius-card: 0.625rem;
+  --radius-pill: 9999px;
+
+  /* Two levels of elevation. Anything that needs a third needs a different
+   * layout instead. In dark the ramp does the lifting, so the shadows are
+   * near-invisible and a hairline ring carries the edge. */
+  --shadow-raised: 0 1px 2px oklch(0.222 0.008 70 / 0.06),
+    0 1px 1px oklch(0.222 0.008 70 / 0.04);
+  --shadow-overlay: 0 8px 28px oklch(0.222 0.008 70 / 0.12),
+    0 2px 6px oklch(0.222 0.008 70 / 0.08);
+
+  /* Fast is for state (hover, press, check). Slow is for layout (a sheet
+   * arriving, a section opening). Nothing in between, so nothing has to be
+   * argued about. */
+  --motion-fast: 120ms;
+  --motion-slow: 260ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dark {
+  --shadow-raised: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-overlay: 0 12px 36px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.4);
+}
+
+/* The reduced-motion rule is global and unconditional: a user who has asked
+ * their OS for less motion gets it everywhere, without each component having
+ * to remember. Transitions collapse to ~nothing rather than to `none`, so
+ * transitionend handlers still fire. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 1ms;
+    --motion-slow: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::selection {
+  background-color: var(--selection-bg);
+  color: var(--selection-fg);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tailwind theme binding.
+ *
+ * `--color-*: initial` deletes Tailwind's default palette outright. After
+ * this, `bg-gray-800` and `text-red-500` are not classes — the build fails
+ * to produce them and the colour simply does not appear. This is the
+ * tokens-only policy of ADR-0033, enforced by the compiler rather than by a
+ * reviewer noticing.
+ *
+ * `inline` matters: without it the generated `--color-*` variables would be
+ * computed once at `:root` and would not re-resolve under `.dark`.
+ * ------------------------------------------------------------------------ */
+
+@theme inline {
+  --color-*: initial;
+
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-inherit: inherit;
+
+  --color-page: var(--surface-page);
+  --color-card: var(--surface-card);
+  --color-raised: var(--surface-raised);
+  --color-overlay: var(--surface-overlay);
+  --color-sunken: var(--surface-sunken);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-scrim: var(--scrim);
+  --color-border-control: var(--border-control);
+
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-inverse: var(--text-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-border: var(--accent-border);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-ring: var(--accent-ring);
+
+  --color-danger: var(--destructive);
+  --color-danger-fg: var(--destructive-foreground);
+
+  --color-status-pending-fill: var(--status-pending-fill);
+  --color-status-pending-border: var(--status-pending-border);
+  --color-status-pending-text: var(--status-pending-text);
+  --color-status-running-fill: var(--status-running-fill);
+  --color-status-running-border: var(--status-running-border);
+  --color-status-running-text: var(--status-running-text);
+  --color-status-passed-fill: var(--status-passed-fill);
+  --color-status-passed-border: var(--status-passed-border);
+  --color-status-passed-text: var(--status-passed-text);
+  --color-status-parked-fill: var(--status-parked-fill);
+  --color-status-parked-border: var(--status-parked-border);
+  --color-status-parked-text: var(--status-parked-text);
+  --color-status-failed-fill: var(--status-failed-fill);
+  --color-status-failed-border: var(--status-failed-border);
+  --color-status-failed-text: var(--status-failed-text);
+  --color-status-over-budget-fill: var(--status-over-budget-fill);
+  --color-status-over-budget-border: var(--status-over-budget-border);
+  --color-status-over-budget-text: var(--status-over-budget-text);
+
+  --color-layer-product-fill: var(--layer-product-fill);
+  --color-layer-product-border: var(--layer-product-border);
+  --color-layer-product-text: var(--layer-product-text);
+  --color-layer-api-fill: var(--layer-api-fill);
+  --color-layer-api-border: var(--layer-api-border);
+  --color-layer-api-text: var(--layer-api-text);
+  --color-layer-data-fill: var(--layer-data-fill);
+  --color-layer-data-border: var(--layer-data-border);
+  --color-layer-data-text: var(--layer-data-text);
+  --color-layer-infra-fill: var(--layer-infra-fill);
+  --color-layer-infra-border: var(--layer-infra-border);
+  --color-layer-infra-text: var(--layer-infra-text);
+  --color-layer-ui-fill: var(--layer-ui-fill);
+  --color-layer-ui-border: var(--layer-ui-border);
+  --color-layer-ui-text: var(--layer-ui-text);
+  --color-layer-other-fill: var(--layer-other-fill);
+  --color-layer-other-border: var(--layer-other-border);
+  --color-layer-other-text: var(--layer-other-text);
+
+  --color-diff-added-fill: var(--diff-added-fill);
+  --color-diff-added-border: var(--diff-added-border);
+  --color-diff-added-text: var(--diff-added-text);
+  --color-diff-added-marker: var(--diff-added-marker);
+  --color-diff-removed-fill: var(--diff-removed-fill);
+  --color-diff-removed-border: var(--diff-removed-border);
+  --color-diff-removed-text: var(--diff-removed-text);
+  --color-diff-removed-marker: var(--diff-removed-marker);
+  --color-diff-changed-fill: var(--diff-changed-fill);
+  --color-diff-changed-border: var(--diff-changed-border);
+  --color-diff-changed-text: var(--diff-changed-text);
+  --color-diff-changed-marker: var(--diff-changed-marker);
+  --color-diff-conflict-fill: var(--diff-conflict-fill);
+  --color-diff-conflict-border: var(--diff-conflict-border);
+  --color-diff-conflict-text: var(--diff-conflict-text);
+  --color-diff-conflict-marker: var(--diff-conflict-marker);
+
+  --color-server-conformant-fill: var(--server-conformant-fill);
+  --color-server-conformant-border: var(--server-conformant-border);
+  --color-server-conformant-text: var(--server-conformant-text);
+  --color-server-degraded-fill: var(--server-degraded-fill);
+  --color-server-degraded-border: var(--server-degraded-border);
+  --color-server-degraded-text: var(--server-degraded-text);
+  --color-server-unreachable-fill: var(--server-unreachable-fill);
+  --color-server-unreachable-border: var(--server-unreachable-border);
+  --color-server-unreachable-text: var(--server-unreachable-text);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+
+  --ease-quiet: var(--motion-ease);
+
+  /* A dense editorial scale. 13px is the working size: this is a console,
+   * and the reading distance is a person leaning in, not a landing page. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.45;
+  --text-2xs--letter-spacing: 0.01em;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.55;
+  --text-md: 1rem;
+  --text-md--line-height: 1.6;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.4;
+  --text-lg--letter-spacing: -0.01em;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.3;
+  --text-xl--letter-spacing: -0.015em;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 1.2;
+  --text-2xl--letter-spacing: -0.02em;
+  --text-3xl: 2.25rem;
+  --text-3xl--line-height: 1.12;
+  --text-3xl--letter-spacing: -0.025em;
+}
+
+/* Motion utilities, so components name the intent rather than a number. */
+@utility motion-fast {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--motion-ease);
+}
+
+@utility motion-slow {
+  transition-duration: var(--motion-slow);
+  transition-timing-function: var(--motion-ease);
+}
+
+/* Tabular figures for anything a person compares down a column: costs,
+ * token counts, durations. */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+ * Enter/exit animations for the overlay family.
+ *
+ * Layout motion is `--motion-slow` on the way in and `--motion-fast` on the
+ * way out: arriving should feel considered, leaving should feel immediate.
+ * The reduced-motion block above collapses both without any of these needing
+ * to know about it.
+ * ------------------------------------------------------------------------ */
+
+@keyframes df-fade-in { from { opacity: 0; } }
+@keyframes df-fade-out { to { opacity: 0; } }
+@keyframes df-pop-in { from { opacity: 0; transform: scale(0.97); } }
+@keyframes df-pop-out { to { opacity: 0; transform: scale(0.97); } }
+@keyframes df-slide-in-right { from { transform: translateX(100%); } }
+@keyframes df-slide-out-right { to { transform: translateX(100%); } }
+@keyframes df-slide-in-left { from { transform: translateX(-100%); } }
+@keyframes df-slide-out-left { to { transform: translateX(-100%); } }
+@keyframes df-slide-in-bottom { from { transform: translateY(100%); } }
+@keyframes df-slide-out-bottom { to { transform: translateY(100%); } }
+
+@utility anim-overlay {
+  &[data-state="open"] {
+    animation: df-fade-in var(--motion-slow) var(--motion-ease);
+  }
+  &[data-state="closed"] {
+    animation: df-fade-out var(--motion-fast) var(--motion-ease);
+  }
+}
+
+@utility anim-pop {
+  &[data-state="open"] {
+    animation: df-fade-in var(--motion-fast) var(--motion-ease),
+      df-pop-in var(--motion-fast) var(--motion-ease);
+  }
+  &[data-state="closed"] {
+    animation: df-fade-out var(--motion-fast) var(--motion-ease),
+      df-pop-out var(--motion-fast) var(--motion-ease);
+  }
+}
+
+@utility anim-sheet-right {
+  &[data-state="open"] {
+    animation: df-slide-in-right var(--motion-slow) var(--motion-ease);
+  }
+  &[data-state="closed"] {
+    animation: df-slide-out-right var(--motion-fast) var(--motion-ease);
+  }
+}
+
+@utility anim-sheet-left {
+  &[data-state="open"] {
+    animation: df-slide-in-left var(--motion-slow) var(--motion-ease);
+  }
+  &[data-state="closed"] {
+    animation: df-slide-out-left var(--motion-fast) var(--motion-ease);
+  }
+}
+
+@utility anim-sheet-bottom {
+  &[data-state="open"] {
+    animation: df-slide-in-bottom var(--motion-slow) var(--motion-ease);
+  }
+  &[data-state="closed"] {
+    animation: df-slide-out-bottom var(--motion-fast) var(--motion-ease);
+  }
+}
+
+/* A run that is actually moving. Chroma, not scale — a pulsing size in a
+ * dense timeline is a twitch; a pulsing tint is a heartbeat. */
+@keyframes df-breathe {
+  50% { opacity: 0.45; }
+}
+
+@utility breathe {
+  animation: df-breathe 1800ms var(--motion-ease) infinite;
+}

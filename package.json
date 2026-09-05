@@ -1,0 +1,19 @@
+{
+  "name": "dark-factory-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "pnpm workspace root for the Dark Factory web surface: the Next.js dashboard and the @dark-factory/ui design system (ADR-0033).",
+  "scripts": {
+    "dev": "pnpm --filter dashboard dev",
+    "build": "pnpm --filter dashboard build",
+    "lint": "pnpm -r lint",
+    "check:contrast": "pnpm --filter @dark-factory/ui check:contrast"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

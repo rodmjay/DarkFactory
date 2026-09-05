@@ -1,15 +1,22 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/* The three type choices are recorded in packages/ui/DESIGN.md. The package
+ * names the tokens (--font-sans, --font-mono); the app is what actually
+ * loads faces, because loading a font is app wiring, not visual design. */
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-ibm-plex-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -21,17 +28,23 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      /* Dark is the primary theme (ADR-0033). Light is reachable by removing
+       * this class; a persisted per-user preference is step 4 work. */
+      className={`dark ${instrumentSans.variable} ${ibmPlexMono.variable} h-full`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-neutral-950 text-neutral-100">
-        <header className="border-b border-neutral-800 px-6 py-3">
+      <body className="flex min-h-full flex-col bg-page text-primary">
+        <header className="border-b border-border px-6 py-3">
           <nav className="flex items-center gap-4 text-sm">
-            <a href="/projects" className="font-semibold tracking-tight">
+            <Link href="/projects" className="font-semibold tracking-tight">
               Dark Factory
-            </a>
-            <a href="/projects" className="text-neutral-400 hover:text-neutral-100">
+            </Link>
+            <Link href="/projects" className="text-secondary hover:text-primary">
               Projects
-            </a>
+            </Link>
+            <Link href="/design" className="ml-auto text-secondary hover:text-primary">
+              Design system
+            </Link>
           </nav>
         </header>
         <main className="flex-1">{children}</main>
