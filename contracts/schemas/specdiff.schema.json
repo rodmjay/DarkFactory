@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/specdiff.schema.json",
+  "title": "SpecDiff",
+  "description": "A proposed amendment to the spec graph: node creations, revisions and retirements plus edge changes. See ADR-0016 and ADR-0017. This is both the ADR-0021 `spec_diff` render payload and the contract a language model's proposal must satisfy before the factory will persist it — an amendment that does not validate here never reaches df.specs.propose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["creates", "revises", "retires", "edge_adds", "edge_retires"],
+  "properties": {
+    "creates": {
+      "type": "array",
+      "description": "New spec nodes. The factory assigns each a spec_id; a model never invents one.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "layer", "text"],
+        "properties": {
+          "kind": { "$ref": "#/$defs/kind" },
+          "layer": { "$ref": "#/$defs/layer" },
+          "text": { "$ref": "#/$defs/text" },
+          "rationale": { "$ref": "#/$defs/rationale" }
+        }
+      }
+    },
+    "revises": {
+      "type": "array",
+      "description": "New revisions of existing nodes. The full replacement text, never a patch.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["spec_id", "text"],
+        "properties": {
+          "spec_id": { "$ref": "#/$defs/spec_id" },
+          "text": { "$ref": "#/$defs/text" },
+          "rationale": { "$ref": "#/$defs/rationale" }
+        }
+      }
+    },
+    "retires": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["spec_id"],
+        "properties": {
+          "spec_id": { "$ref": "#/$defs/spec_id" },
+          "rationale": { "$ref": "#/$defs/rationale" }
+        }
+      }
+    },
+    "edge_adds": {
+      "type": "array",
+      "description": "Edges point at node identities, not revisions. `new:N` refers to the Nth entry of `creates` (zero-based), which is how a diff can wire up nodes whose ids do not exist yet.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from_spec_id", "to_spec_id", "kind"],
+        "properties": {
+          "from_spec_id": { "$ref": "#/$defs/spec_ref" },
+          "to_spec_id": { "$ref": "#/$defs/spec_ref" },
+          "kind": { "$ref": "#/$defs/edge_kind" },
+          "rationale": { "$ref": "#/$defs/rationale" }
+        }
+      }
+    },
+    "edge_retires": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["edge_id"],
+        "properties": {
+          "edge_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "rationale": { "$ref": "#/$defs/rationale" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "spec_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "A ULID in Crockford base32. A model may only reference ids it was actually shown in the context pack; inventing one produces a diff the factory cannot apply."
+    },
+    "spec_ref": {
+      "oneOf": [
+        { "$ref": "#/$defs/spec_id" },
+        {
+          "type": "string",
+          "pattern": "^new:(0|[1-9][0-9]{0,2})$",
+          "description": "A forward reference to `creates[N]` within this same diff."
+        }
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["rule", "behavior", "constraint", "decision", "entity", "interface"],
+      "description": "What sort of thing this node is. Deliberately a closed set: an open one becomes a synonym soup within a month of a model choosing freely."
+    },
+    "layer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$",
+      "description": "Which architectural layer the node belongs to. Open, because layers are a property of the customer's stack and are declared by their standards servers (ADR-0023)."
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "description": "The specification itself, as a single self-contained statement. ADR-0016's small grain: one behaviour, rule or constraint per node."
+    },
+    "rationale": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Why this change. Rendered in the approval card; not part of the node's canonical content, so it never affects the content hash."
+    },
+    "edge_kind": {
+      "type": "string",
+      "enum": ["depends_on", "conflicts_with", "supersedes", "implements", "constrains"],
+      "description": "ADR-0016's typed edges. Plugin-declared kinds are added to this enum through the convention process, not by a model choosing a new string."
+    }
+  }
+}

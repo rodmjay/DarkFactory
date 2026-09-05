@@ -12,6 +12,7 @@ COPY src/DarkFactory.Core/DarkFactory.Core.csproj src/DarkFactory.Core/
 COPY src/DarkFactory.Contracts/DarkFactory.Contracts.csproj src/DarkFactory.Contracts/
 COPY src/DarkFactory.Data/DarkFactory.Data.csproj src/DarkFactory.Data/
 COPY src/DarkFactory.Client/DarkFactory.Client.csproj src/DarkFactory.Client/
+COPY src/DarkFactory.Foundry/DarkFactory.Foundry.csproj src/DarkFactory.Foundry/
 COPY src/DarkFactory.Migrate/DarkFactory.Migrate.csproj src/DarkFactory.Migrate/
 COPY src/DarkFactory.Mcp/DarkFactory.Mcp.csproj src/DarkFactory.Mcp/
 COPY src/DarkFactory.Engine/DarkFactory.Engine.csproj src/DarkFactory.Engine/

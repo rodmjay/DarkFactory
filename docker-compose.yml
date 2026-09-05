@@ -45,7 +45,9 @@ services:
       - "5100:8080"
     environment:
       ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=darkfactory_app;Password=${APP_DB_PASSWORD:-darkfactory_app}"
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      Foundry__Endpoint: ${Foundry__Endpoint:-}
+      Foundry__ApiKey: ${Foundry__ApiKey:-}
+      Foundry__ResourceName: ${Foundry__ResourceName:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
@@ -71,7 +73,9 @@ services:
     command: ["/app/engine/DarkFactory.Engine.dll"]
     environment:
       ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=darkfactory_app;Password=${APP_DB_PASSWORD:-darkfactory_app}"
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      Foundry__Endpoint: ${Foundry__Endpoint:-}
+      Foundry__ApiKey: ${Foundry__ApiKey:-}
+      Foundry__ResourceName: ${Foundry__ResourceName:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:

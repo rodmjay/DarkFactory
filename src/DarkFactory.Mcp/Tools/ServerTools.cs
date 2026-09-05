@@ -26,32 +26,6 @@ public static class ServerTools
     public static string ResolveOrgId(IConfiguration configuration) =>
         configuration["DARKFACTORY_DEFAULT_ORG"] ?? "org_local";
 
-    /// <summary>
-    /// The SDK deliberately redacts exception messages on the way out —
-    /// every exception type except <see cref="McpException"/> reaches the
-    /// caller as a bare "An error occurred invoking '...'", so an
-    /// unwrapped registration failure would tell a server author nothing.
-    /// That is the right default (an unexpected exception can carry
-    /// anything), but these two are the opposite case: their whole purpose
-    /// is to be read by whoever tried to register, and they are written to
-    /// carry no secrets — a URL, schema violations, blocking run ids.
-    /// </summary>
-    private static async Task<T> Surfacing<T>(Func<Task<T>> action)
-    {
-        try
-        {
-            return await action();
-        }
-        catch (ServerRegistrationException ex)
-        {
-            throw new McpException(ex.Message);
-        }
-        catch (ServerInUseException ex)
-        {
-            throw new McpException(ex.Message);
-        }
-    }
-
     [McpServerTool(Name = "df.describe"),
      Description("The Dark Factory handshake: convention version(s), capabilities, domain, requires and effective config.")]
     public static DescribeResponse Describe(FactoryDescribe describe) => describe.Build();
@@ -67,7 +41,7 @@ public static class ServerTools
         [Description("built_in | premium | community. Defaults to community.")] string? tier = null,
         CancellationToken cancellationToken = default)
     {
-        var registration = await Surfacing(() => registry.RegisterAsync(
+        var registration = await Errors.Surfacing(() => registry.RegisterAsync(
             ResolveOrgId(configuration), url, manifest, project_id, ParseTier(tier), cancellationToken));
 
         return RegisterServerResult.From(registration);
@@ -92,7 +66,7 @@ public static class ServerTools
         [Description("The server id returned by df.servers.list.")] string server_id,
         CancellationToken cancellationToken = default)
     {
-        var server = await Surfacing(() => registry.RemoveAsync(ResolveOrgId(configuration), server_id, cancellationToken));
+        var server = await Errors.Surfacing(() => registry.RemoveAsync(ResolveOrgId(configuration), server_id, cancellationToken));
         return ServerSummary.From(server);
     }
 

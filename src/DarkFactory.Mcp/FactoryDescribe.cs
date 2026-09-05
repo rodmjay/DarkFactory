@@ -77,7 +77,9 @@ public sealed class FactoryDescribe(IOptions<McpServerOptions> serverOptions, IC
             ["environment"] = configuration["DARKFACTORY_ENVIRONMENT"]
                 ?? configuration["ASPNETCORE_ENVIRONMENT"]
                 ?? "local",
-            ["foundry_resource"] = configuration["FOUNDRY_RESOURCE_NAME"] ?? "(unset)",
+            ["foundry_resource"] = configuration["Foundry:ResourceName"]
+                ?? configuration["FOUNDRY_RESOURCE_NAME"]
+                ?? "(unset)",
         };
 
         return values.ToDictionary(

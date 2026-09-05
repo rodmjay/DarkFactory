@@ -15,10 +15,25 @@ namespace DarkFactory.Data;
 /// </summary>
 public interface IArtifactStore
 {
+    /// <summary>Stores an artifact produced by a run stage (docs/adr/0004).</summary>
     Task<Artifact> PutAsync(
         string orgId,
         string projectId,
         string runId,
+        string type,
+        string contentJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stores an artifact belonging to a conversation rather than a run —
+    /// a ContextPack. Separate method rather than a nullable runId on the
+    /// one above, so a caller cannot pass null by accident and silently
+    /// orphan a run artifact.
+    /// </summary>
+    Task<Artifact> PutForConversationAsync(
+        string orgId,
+        string projectId,
+        string conversationId,
         string type,
         string contentJson,
         CancellationToken cancellationToken = default);
@@ -39,13 +54,32 @@ public static class ArtifactRef
 
 public sealed class PostgresArtifactStore(DarkFactoryDbContext dbContext) : IArtifactStore
 {
-    public async Task<Artifact> PutAsync(
+    public Task<Artifact> PutAsync(
         string orgId,
         string projectId,
         string runId,
         string type,
         string contentJson,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        StoreAsync(orgId, projectId, runId, null, type, contentJson, cancellationToken);
+
+    public Task<Artifact> PutForConversationAsync(
+        string orgId,
+        string projectId,
+        string conversationId,
+        string type,
+        string contentJson,
+        CancellationToken cancellationToken = default) =>
+        StoreAsync(orgId, projectId, null, conversationId, type, contentJson, cancellationToken);
+
+    private async Task<Artifact> StoreAsync(
+        string orgId,
+        string projectId,
+        string? runId,
+        string? conversationId,
+        string type,
+        string contentJson,
+        CancellationToken cancellationToken)
     {
         var artifact = new Artifact
         {
@@ -53,6 +87,7 @@ public sealed class PostgresArtifactStore(DarkFactoryDbContext dbContext) : IArt
             OrgId = orgId,
             ProjectId = projectId,
             RunId = runId,
+            ConversationId = conversationId,
             Type = type,
             ContentJson = contentJson,
             Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(contentJson))).ToLowerInvariant(),

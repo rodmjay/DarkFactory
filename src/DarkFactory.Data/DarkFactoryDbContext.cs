@@ -31,6 +31,12 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
 
     // docs/adr/0018 (servers) and docs/adr/0023 (standards index) — schema
     // only in this slice; df.servers.register and indexing are step 3b+.
+    // docs/adr/0028 — the project's standing team. Minimal in this slice:
+    // skills and team snapshotting land in 3d.
+    public DbSet<Team> Teams => Set<Team>();
+    public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
+    public DbSet<Assignment> Assignments => Set<Assignment>();
+
     public DbSet<Server> Servers => Set<Server>();
     public DbSet<ConformanceResult> ConformanceResults => Set<ConformanceResult>();
     public DbSet<StandardsIndexEntry> StandardsIndex => Set<StandardsIndexEntry>();
@@ -95,7 +101,13 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.HasKey(a => a.Id);
             e.Property(a => a.Sha256).HasMaxLength(64);
             e.HasIndex(a => a.RunId);
-            e.HasOne<Run>().WithMany().HasForeignKey(a => a.RunId);
+            e.HasIndex(a => a.ConversationId);
+            // Both optional, exactly one set: a run artifact (docs/adr/0004)
+            // or a conversation's ContextPack. The database enforces the
+            // "exactly one" with a CHECK constraint — see
+            // Migrations/0004_teams_and_context_packs.sql.
+            e.HasOne<Run>().WithMany().HasForeignKey(a => a.RunId).IsRequired(false);
+            e.HasOne<Conversation>().WithMany().HasForeignKey(a => a.ConversationId).IsRequired(false);
         });
 
         modelBuilder.Entity<Gate>(e =>
@@ -233,6 +245,36 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.HasIndex(a => new { a.TargetType, a.TargetId });
             // No FK on (TargetType, TargetId): it's polymorphic (amendment
             // or gate), which a single-table foreign key can't express.
+        });
+
+        modelBuilder.Entity<Team>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.HasIndex(t => t.ProjectId);
+            // One active team per project: docs/adr/0028 leaves multiple
+            // teams open, but v1 must never be ambiguous about which one a
+            // conversation resolves against, so the partial unique index
+            // makes a second active team unrepresentable rather than merely
+            // discouraged.
+            e.HasIndex(t => t.ProjectId).HasFilter("is_active").IsUnique().HasDatabaseName("ux_teams_project_id_active");
+            e.HasOne<Project>().WithMany().HasForeignKey(t => t.ProjectId);
+        });
+
+        modelBuilder.Entity<TeamMember>(e =>
+        {
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => new { m.TeamId, m.Role }).IsUnique();
+            e.HasOne<Team>().WithMany().HasForeignKey(m => m.TeamId);
+        });
+
+        modelBuilder.Entity<Assignment>(e =>
+        {
+            e.HasKey(a => a.Id);
+            // One member per point per team: an assignment map with two
+            // answers for "who plans?" is not a map.
+            e.HasIndex(a => new { a.TeamId, a.Point }).IsUnique();
+            e.HasOne<Team>().WithMany().HasForeignKey(a => a.TeamId);
+            e.HasOne<TeamMember>().WithMany().HasForeignKey(a => a.TeamMemberId);
         });
 
         modelBuilder.Entity<Server>(e =>

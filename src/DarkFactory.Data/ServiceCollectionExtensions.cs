@@ -22,6 +22,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IArtifactStore, PostgresArtifactStore>();
         services.AddScoped<RunLeaseStore>();
         services.AddScoped<SpecGraphService>();
+        services.AddScoped<SpecDiffTranslator>();
+        services.AddScoped<TeamService>();
+        services.AddScoped<ConversationService>();
+        services.AddScoped<ProjectService>();
+        services.AddScoped<WorkService>();
+        services.AddScoped<ServerRegistry>();
 
         services.AddHealthChecks().AddNpgSql(
             connectionString,

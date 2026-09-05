@@ -23,6 +23,8 @@
          that directory, not this project, is the canonical home. -->
     <EmbeddedResource Include="..\..\contracts\schemas\describe.schema.json"
                       LogicalName="DarkFactory.Contracts.Schemas.describe.schema.json" />
+    <EmbeddedResource Include="..\..\contracts\schemas\specdiff.schema.json"
+                      LogicalName="DarkFactory.Contracts.Schemas.specdiff.schema.json" />
   </ItemGroup>
 
 </Project>

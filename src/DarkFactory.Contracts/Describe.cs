@@ -54,16 +54,3 @@ public sealed record DescribeResponse
     public IReadOnlyDictionary<string, JsonElement>? Extensions { get; init; }
 }
 
-/// <summary>One schema violation, in a form that reads usefully in an error message.</summary>
-public sealed record DescribeValidationError(string Location, string Message)
-{
-    public override string ToString() => string.IsNullOrEmpty(Location) ? Message : $"{Location}: {Message}";
-}
-
-public sealed record DescribeValidationResult(bool IsValid, IReadOnlyList<DescribeValidationError> Errors)
-{
-    public static DescribeValidationResult Valid { get; } = new(true, []);
-
-    /// <summary>A single line listing every violation, for the registration error the caller sees.</summary>
-    public string Summarize() => string.Join("; ", Errors.Select(e => e.ToString()));
-}

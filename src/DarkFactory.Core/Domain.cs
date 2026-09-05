@@ -81,8 +81,17 @@ public sealed class Artifact
     public required string Id { get; init; }
     public required string OrgId { get; init; }
     public required string ProjectId { get; init; }
-    public required string RunId { get; init; }
-    public required string Type { get; init; } // "Spec" | "Plan" | "ChangeSet" | "TestReport"
+
+    // Exactly one of these is set. Most artifacts belong to a run, but a
+    // ContextPack (docs/adr/0023 — what the model was shown for one
+    // conversational turn) belongs to a conversation, and the conversation
+    // is no longer part of a run at all (docs/adr/0003, as amended).
+    // Content addressing and the "factory://artifacts/{id}" ref scheme are
+    // worth reusing for both rather than inventing a second store.
+    public string? RunId { get; init; }
+    public string? ConversationId { get; init; }
+
+    public required string Type { get; init; } // "Plan" | "ChangeSet" | "TestReport" | "ContextPack"
     public required string ContentJson { get; init; }
     public required string Sha256 { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }

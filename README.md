@@ -18,11 +18,15 @@ it in a second, independent process from durable state alone (see
 On top of that sit the **spec graph** — content-addressed, append-only, with
 immutability enforced by database grant rather than convention
 ([ADR-0016](docs/adr/0016-spec-graph-content-addressed-append-only.md)) —
-and the **`df.describe` handshake and server registry**
+the **`df.describe` handshake and server registry**
 ([ADR-0018](docs/adr/0018-df-namespace-and-describe-handshake.md),
-[docs/conventions/describe.md](docs/conventions/describe.md)). The
-conversation (`df.conversations.*`) is next — see each area's code comments
-for what's real versus stubbed.
+[docs/conventions/describe.md](docs/conventions/describe.md)), and the
+**conversation** — an architect agent that reads the spec graph and proposes
+amendments to it, with everything it was shown persisted as a
+`ContextPack` and every proposal validated before it is stored
+([ADR-0017](docs/adr/0017-conversation-is-the-product.md),
+[ADR-0027](docs/adr/0027-foundry-model-gateway.md)). See each area's code
+comments for what's real versus stubbed.
 
 ## 1. `docker compose up`
 
@@ -110,13 +114,34 @@ claude mcp add --transport http dark-factory http://localhost:5100/mcp
 and register that workspace server with the factory:
 
 ```
-df.servers.register("http://host.docker.internal:5200/mcp")
+df.projects.register("http://host.docker.internal:5200/mcp")
 ```
 
-Then, once the conversation surface exists (`df.conversations.*`,
-`df.specs.*`, `df.work.create`), a run is seeded from approved spec
-amendments rather than from raw text — see
+That runs the handshake and conformance check, derives a project name, and
+seeds the project's default agent team. Then:
+
+```
+df.conversations.start(project_id)
+df.conversations.turn(conversation_id, "...")   -> markdown, and a spec_diff once it settles
+df.specs.approve(amendment_id)
+df.work.create(project_id, [amendment_id])      -> a run at `plan`, against a fresh snapshot
+```
+
+A run is seeded from approved spec amendments, never from raw text —
+`work.submit(input: string)` is deliberately gone. See
 [the architecture brief](docs/architecture-brief.md).
+
+### Model access
+
+All inference goes through `IModelGateway`
+([ADR-0027](docs/adr/0027-foundry-model-gateway.md)). Nothing above that
+interface knows which provider serves a call: the conversation service names
+a *deployment* — "architect", "planner" — and the project's team
+([ADR-0028](docs/adr/0028-project-agent-teams.md)) decides which one. Set
+`Foundry__Endpoint` (plus `Foundry__ApiKey` locally; production uses Entra
+managed identity). Leave it unset and the stack still boots — a
+conversational turn then fails saying exactly that, rather than silently
+calling a model nobody chose.
 
 `host.docker.internal` is how the `factory` container (inside Docker) reaches
 the workspace server (running directly on your host) — see
@@ -145,7 +170,7 @@ approved from the dashboard along the way — see
 docs/architecture-brief.md     The v2 brief — supersedes the original setup prompt
 docs/adr/                     ADR-0001..0030 — every foundational decision, why, and its consequences
 docs/conventions/              df.describe (v0.2), Workspace (v0.2, implemented), Theme/Plugin (v0.1, mostly TODO), the call envelope
-contracts/schemas/             JSON Schema for DescribeResponse, Envelope, HookResult, Spec, Plan, ChangeSet, TestReport
+contracts/schemas/             JSON Schema for DescribeResponse, SpecDiff, Envelope, HookResult, Plan, ChangeSet, TestReport
 src/DarkFactory.Mcp/           ASP.NET Core host: MCP server, SignalR hub, outbox publisher, webhook ingress, health
 src/DarkFactory.Core/          Domain: Project, WorkItem, Run, Stage, Artifact, Gate, Event, AuditEntry, PipelineStages
 src/DarkFactory.Engine/        RunStateMachine (checkpoint + outbox + lease release, one transaction), GateService,
@@ -156,7 +181,9 @@ src/DarkFactory.Data/          EF Core DbContext (queries only), plain-.sql Migr
                                 ServerRegistry + ConformanceChecker + ManifestLiveDiff, AppRole
 src/DarkFactory.Data/Migrations/ Hand-written, versioned .sql — the schema's source of truth (no EF Migrations)
 src/DarkFactory.Migrate/       One-shot console app: applies pending Migrations/*.sql; the only thing that migrates
-src/DarkFactory.Contracts/     C# types matching contracts/schemas
+src/DarkFactory.Contracts/     C# types matching contracts/schemas, plus their schema validators
+src/DarkFactory.Foundry/       IModelGateway against Microsoft Foundry — the only project that knows a
+                                model provider exists (ADR-0027)
 src/DarkFactory.Client/        MCP client wrapper: envelope, deadlines, failure classification, McpServerProbe
 dashboard/                     Next.js dashboard
 reference/workspace-mcp/       TypeScript reference implementation of the Workspace convention

@@ -3,6 +3,8 @@ using DarkFactory.Client;
 using DarkFactory.Contracts;
 using DarkFactory.Core;
 using DarkFactory.Data;
+using DarkFactory.Foundry;
+using Microsoft.Extensions.Options;
 using DarkFactory.Mcp;
 using DarkFactory.Mcp.Endpoints;
 using DarkFactory.Mcp.Hubs;
@@ -51,6 +53,24 @@ builder.Services.AddHostedService<OutboxPublisherHostedService>();
 builder.Services.AddSingleton<IServerProbe>(sp =>
     new McpServerProbe(sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<FactoryDescribe>();
+
+// docs/adr/0027: all inference goes through IModelGateway, and this is the
+// only place in the solution that decides which implementation that is.
+// Nothing above the interface — not the conversation service, not the
+// engine, not a test — learns which provider served a call.
+builder.Services.Configure<FoundryOptions>(builder.Configuration.GetSection(FoundryOptions.SectionName));
+var foundryOptions = builder.Configuration.GetSection(FoundryOptions.SectionName).Get<FoundryOptions>();
+if (foundryOptions?.IsConfigured == true)
+{
+    builder.Services.AddSingleton<IModelGateway, FoundryModelGateway>();
+}
+else
+{
+    // Boot anyway. Everything that does not need a model keeps working, and
+    // anything that does fails with a sentence saying what is missing
+    // rather than with a null reference at the first conversational turn.
+    builder.Services.AddSingleton<IModelGateway>(new UnconfiguredModelGateway());
+}
 builder.Services.AddScoped<ServerRegistry>();
 
 var app = builder.Build();

@@ -81,9 +81,17 @@ public sealed class SpecGraphService(DarkFactoryDbContext db)
         };
         db.Provenance.Add(provenance);
 
+        // A diff may create a node and an edge to it in the same amendment,
+        // which it expresses as "new:0" — the node has no spec_id until
+        // this moment, because the factory assigns ids, never the proposer.
+        // Index → assigned id, filled as creates are applied and consulted
+        // when the edges are.
+        var createdSpecIds = new List<string>();
+
         foreach (var create in diff.Creates)
         {
             var specId = Ulid.NewUlid();
+            createdSpecIds.Add(specId);
             db.SpecNodes.Add(new SpecNode
             {
                 SpecId = specId,
@@ -114,8 +122,8 @@ public sealed class SpecGraphService(DarkFactoryDbContext db)
                 Id = Ulid.NewUlid(),
                 ProjectId = amendment.ProjectId,
                 OrgId = amendment.OrgId,
-                FromSpecId = edgeAdd.FromSpecId,
-                ToSpecId = edgeAdd.ToSpecId,
+                FromSpecId = ResolveEndpoint(edgeAdd.FromSpecId, createdSpecIds),
+                ToSpecId = ResolveEndpoint(edgeAdd.ToSpecId, createdSpecIds),
                 Kind = edgeAdd.Kind,
                 CreatedAt = now,
                 ProvenanceId = provenance.Id,
@@ -144,6 +152,32 @@ public sealed class SpecGraphService(DarkFactoryDbContext db)
         amendment.Status = AmendmentStatus.Rejected;
         await db.SaveChangesAsync(cancellationToken);
         return amendment;
+    }
+
+    /// <summary>
+    /// Resolves a "new:N" forward reference to the spec id assigned to the
+    /// Nth create in this same amendment. Anything else is already a real
+    /// spec id and passes through. Out-of-range indexes are rejected before
+    /// an amendment is ever persisted (SpecDiffTranslator), so reaching one
+    /// here means the diff was written directly rather than proposed, and
+    /// failing loudly beats inventing an endpoint.
+    /// </summary>
+    private static string ResolveEndpoint(string reference, IReadOnlyList<string> createdSpecIds)
+    {
+        const string prefix = "new:";
+        if (!reference.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return reference;
+        }
+
+        if (!int.TryParse(reference[prefix.Length..], out var index) || index >= createdSpecIds.Count)
+        {
+            throw new InvalidOperationException(
+                $"Edge endpoint '{reference}' does not refer to a node this amendment creates " +
+                $"(it creates {createdSpecIds.Count}).");
+        }
+
+        return createdSpecIds[index];
     }
 
     /// <summary>Content addressing means proposing identical content for the same node twice is a no-op, not a duplicate.</summary>
