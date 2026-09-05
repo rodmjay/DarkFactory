@@ -10,9 +10,11 @@
     "typecheck": "pnpm -r typecheck",
     "check:contrast": "pnpm --filter @dark-factory/ui check:contrast",
     "check:tokens": "node packages/ui/scripts/check-tokens-only.mjs",
+    "export:build": "pnpm --filter @dark-factory/ui export:build",
+    "export:check": "pnpm --filter @dark-factory/ui export:check",
     "test:visual": "playwright test",
     "test:visual:update": "playwright test --update-snapshots",
-    "check": "pnpm check:tokens && pnpm check:contrast && pnpm lint && pnpm typecheck"
+    "check": "pnpm check:tokens && pnpm check:contrast && pnpm export:check && pnpm lint && pnpm typecheck"
   },
   "packageManager": "pnpm@10.33.2",
   "engines": {

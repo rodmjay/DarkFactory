@@ -12,9 +12,16 @@
  * 2. Hex, rgb() and hsl() in a className or a style prop never went through
  *    Tailwind at all, so the palette reset has no opinion about them.
  *
- * Comments are skipped. The rule's own documentation says `bg-gray-800` more
- * than once, and a checker that cannot read its own explanation would be a
- * checker people disable.
+ * Comments are skipped. The rule's own documentation names the classes it
+ * bans more than once, and a checker that cannot read its own explanation
+ * would be a checker people disable.
+ *
+ * String literals are *not* skipped, and that is deliberate even though it
+ * bit us: `src/manifest.ts` documents this policy in a data string and was
+ * flagged for quoting a real class name. The fix was to stop quoting one —
+ * `bg-<colour>-<step>` reads the same and is not a class. A per-file
+ * exemption would have been easier and is how a policy checker stops being
+ * one, because the next exemption is always easier than the first.
  *
  * Usage: node scripts/check-tokens-only.mjs [dir...]
  */

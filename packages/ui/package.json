@@ -18,6 +18,8 @@
   ],
   "scripts": {
     "check:contrast": "node scripts/check-contrast.mjs",
+    "export:build": "node --experimental-strip-types scripts/build-export.mjs",
+    "export:check": "node --experimental-strip-types scripts/build-export.mjs --check",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },
