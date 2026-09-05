@@ -84,3 +84,55 @@ public sealed record ContextSkill(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("version")] string Version,
     [property: JsonPropertyName("instructions")] string Instructions);
+
+/// <summary>
+/// Guidance a human injected mid-run (docs/adr/0015). Carried into the next
+/// stage's context, which is what makes steering different from cancelling
+/// and restarting with a better prompt.
+/// </summary>
+public sealed record ContextSteer(
+    [property: JsonPropertyName("message")] string Message,
+    [property: JsonPropertyName("actor_id")] string ActorId,
+    [property: JsonPropertyName("stage")] string Stage);
+
+/// <summary>
+/// What a run stage's agent was shown, persisted by reference exactly as a
+/// conversational turn's is (<see cref="ContextPack"/>). Same reason: a
+/// stage's output is only reviewable if what produced it is recoverable,
+/// and reconstructing it later gives you the graph as it is now rather than
+/// as the agent saw it.
+/// </summary>
+public sealed record StageContextPack
+{
+    [JsonPropertyName("run_id")] public required string RunId { get; init; }
+    [JsonPropertyName("project_id")] public required string ProjectId { get; init; }
+    [JsonPropertyName("stage")] public required string Stage { get; init; }
+    [JsonPropertyName("attempt")] public required int Attempt { get; init; }
+
+    [JsonPropertyName("agent")] public required ContextAgent Agent { get; init; }
+
+    /// <summary>The snapshot the run was created against (docs/adr/0004, as amended).</summary>
+    [JsonPropertyName("snapshot_id")] public required string? SnapshotId { get; init; }
+
+    /// <summary>The specifications this run exists to implement, pinned at that snapshot.</summary>
+    [JsonPropertyName("specs")] public required IReadOnlyList<ContextSpecNode> Specs { get; init; }
+
+    [JsonPropertyName("spec_edges")] public required IReadOnlyList<ContextSpecEdge> SpecEdges { get; init; }
+
+    [JsonPropertyName("standards")] public required IReadOnlyList<ContextStandard> Standards { get; init; }
+
+    [JsonPropertyName("skills")] public required IReadOnlyList<ContextSkill> Skills { get; init; }
+
+    /// <summary>Everything a human has said to this run so far (docs/adr/0015).</summary>
+    [JsonPropertyName("steers")] public required IReadOnlyList<ContextSteer> Steers { get; init; }
+
+    /// <summary>Refs of the artifacts earlier stages produced, so `implement` can read the `plan`.</summary>
+    [JsonPropertyName("prior_artifacts")] public required IReadOnlyList<ContextArtifact> PriorArtifacts { get; init; }
+
+    [JsonPropertyName("assembled_at")] public required DateTimeOffset AssembledAt { get; init; }
+}
+
+public sealed record ContextArtifact(
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("ref")] string Ref,
+    [property: JsonPropertyName("stage")] string Stage);

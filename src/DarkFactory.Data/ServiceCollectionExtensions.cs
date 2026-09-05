@@ -28,6 +28,29 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ProjectService>();
         services.AddScoped<WorkService>();
         services.AddScoped<ServerRegistry>();
+        services.AddScoped<BudgetService>();
+        services.AddScoped<RunObservationService>();
+        services.AddScoped<StageContextBuilder>();
+
+        // Artifact URLs are only available when signing is configured. A
+        // null ArtifactUrlSigner is a deliberate signal, not an oversight:
+        // the endpoint that serves artifacts refuses everything without one,
+        // rather than the factory booting with unsigned URLs.
+        var artifactSection = configuration.GetSection(ArtifactUrlOptions.SectionName);
+        var artifactOptions = new ArtifactUrlOptions
+        {
+            PublicBaseUrl = artifactSection[nameof(ArtifactUrlOptions.PublicBaseUrl)],
+            SigningKey = artifactSection[nameof(ArtifactUrlOptions.SigningKey)],
+        };
+        if (TimeSpan.TryParse(artifactSection[nameof(ArtifactUrlOptions.Lifetime)], out var lifetime))
+        {
+            artifactOptions.Lifetime = lifetime;
+        }
+        if (!string.IsNullOrWhiteSpace(artifactOptions.SigningKey)
+            && !string.IsNullOrWhiteSpace(artifactOptions.PublicBaseUrl))
+        {
+            services.AddSingleton(new ArtifactUrlSigner(artifactOptions));
+        }
 
         services.AddHealthChecks().AddNpgSql(
             connectionString,

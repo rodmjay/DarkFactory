@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using DarkFactory.Client;
 using DarkFactory.Core;
 using Microsoft.EntityFrameworkCore;
@@ -26,8 +23,8 @@ public sealed class ReferenceServerRegistrationTests(SpecGraphTestFixture fixtur
     [Fact]
     public async Task TheReferenceServerRegistersAsConformant()
     {
-        using var workspace = new TemporaryWorkspace();
-        await using var server = await ReferenceServer.StartAsync(workspace.Root);
+        using var workspace = GitWorkspace.Create();
+        await using var server = await ReferenceWorkspaceServer.StartAsync(workspace.Root);
 
         ServerRegistration registration;
         await using (var db = fixture.NewDb())
@@ -62,8 +59,8 @@ public sealed class ReferenceServerRegistrationTests(SpecGraphTestFixture fixtur
     [Fact]
     public async Task TheConformanceProbeReallyTouchedTheWorkspace()
     {
-        using var workspace = new TemporaryWorkspace();
-        await using var server = await ReferenceServer.StartAsync(workspace.Root);
+        using var workspace = GitWorkspace.Create();
+        await using var server = await ReferenceWorkspaceServer.StartAsync(workspace.Root);
 
         await using (var db = fixture.NewDb())
         {
@@ -87,8 +84,8 @@ public sealed class ReferenceServerRegistrationTests(SpecGraphTestFixture fixtur
     {
         // The health endpoint of the reference server's own host: reachable,
         // speaks HTTP, is not MCP.
-        using var workspace = new TemporaryWorkspace();
-        await using var server = await ReferenceServer.StartAsync(workspace.Root);
+        using var workspace = GitWorkspace.Create();
+        await using var server = await ReferenceWorkspaceServer.StartAsync(workspace.Root);
         var notMcp = server.Url.Replace("/mcp", "/not-mcp", StringComparison.Ordinal);
 
         await using var db = fixture.NewDb();
@@ -101,111 +98,4 @@ public sealed class ReferenceServerRegistrationTests(SpecGraphTestFixture fixtur
         Assert.Null(await verify.Servers.SingleOrDefaultAsync(s => s.Url == notMcp));
     }
 
-    // ---- harness ----------------------------------------------------------
-
-    private sealed class TemporaryWorkspace : IDisposable
-    {
-        public string Root { get; } =
-            Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "df-workspace-" + Guid.NewGuid().ToString("n"))).FullName;
-
-        public void Dispose()
-        {
-            try { Directory.Delete(Root, recursive: true); } catch { /* best effort */ }
-        }
-    }
-
-    private sealed class ReferenceServer : IAsyncDisposable
-    {
-        private readonly Process _process;
-
-        private ReferenceServer(Process process, string url)
-        {
-            _process = process;
-            Url = url;
-        }
-
-        public string Url { get; }
-
-        public static async Task<ReferenceServer> StartAsync(string workspaceRoot, [CallerFilePath] string here = "")
-        {
-            var repoRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", ".."));
-            var entrypoint = Path.Combine(repoRoot, "reference", "workspace-mcp", "dist", "index.js");
-
-            if (!File.Exists(entrypoint))
-            {
-                throw new InvalidOperationException(
-                    $"{entrypoint} not found. Run `npm install && npm run build` in reference/workspace-mcp first.");
-            }
-
-            var port = FreePort();
-            var startInfo = new ProcessStartInfo("node", $"\"{entrypoint}\" --http {port} --root \"{workspaceRoot}\"")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-
-            var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("could not start node");
-
-            var url = $"http://127.0.0.1:{port}/mcp";
-            await WaitForListeningAsync(port, process);
-            return new ReferenceServer(process, url);
-        }
-
-        /// <summary>
-        /// Polls the real condition — the port accepting a connection —
-        /// rather than sleeping a hopeful interval, so a server that comes
-        /// up fast costs nothing and one that never comes up fails fast
-        /// with a clear message.
-        /// </summary>
-        private static async Task WaitForListeningAsync(int port, Process process)
-        {
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
-            while (DateTime.UtcNow < deadline)
-            {
-                if (process.HasExited)
-                {
-                    throw new InvalidOperationException(
-                        $"the reference server exited with {process.ExitCode} before listening:\n" +
-                        await process.StandardError.ReadToEndAsync());
-                }
-
-                try
-                {
-                    using var probe = new TcpClient();
-                    await probe.ConnectAsync("127.0.0.1", port);
-                    return;
-                }
-                catch (SocketException)
-                {
-                    await Task.Delay(50);
-                }
-            }
-
-            throw new TimeoutException($"the reference server never listened on port {port}");
-        }
-
-        private static int FreePort()
-        {
-            using var listener = new TcpListener(System.Net.IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-            return port;
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            try
-            {
-                if (!_process.HasExited)
-                {
-                    _process.Kill(entireProcessTree: true);
-                }
-            }
-            catch { /* best effort */ }
-            _process.Dispose();
-            return ValueTask.CompletedTask;
-        }
-    }
 }

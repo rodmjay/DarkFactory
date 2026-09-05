@@ -109,10 +109,10 @@ function buildServer(root: string): McpServer {
   server.registerTool(
     "df.vcs.apply_patch",
     {
-      description: "Apply a patch by artifact reference.",
+      description: "Fetch a patch from the URL the factory minted and apply it, returning the files it touched.",
       inputSchema: { patch_ref: z.string(), envelope: envelopeSchema },
     },
-    async ({ patch_ref, envelope }) => json({ ...echoEnvelope(envelope), ...applyPatch(root, patch_ref) }),
+    async ({ patch_ref, envelope }) => json({ ...echoEnvelope(envelope), ...(await applyPatch(root, patch_ref)) }),
   );
 
   server.registerTool(

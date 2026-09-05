@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
@@ -30,6 +34,9 @@
          a real MCP connection, not through the fake. -->
     <ProjectReference Include="..\..\src\DarkFactory.Client\DarkFactory.Client.csproj" />
     <ProjectReference Include="..\..\src\DarkFactory.Foundry\DarkFactory.Foundry.csproj" />
+    <!-- For ArtifactEndpoints: the patch-delivery test stands up a real
+         HTTP host and has the real workspace server fetch from it. -->
+    <ProjectReference Include="..\..\src\DarkFactory.Mcp\DarkFactory.Mcp.csproj" />
   </ItemGroup>
 
 </Project>

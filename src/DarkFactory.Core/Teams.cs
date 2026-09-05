@@ -90,3 +90,28 @@ public sealed class Assignment
     public required string Point { get; init; }
     public required string TeamMemberId { get; set; }
 }
+
+/// <summary>
+/// Tokens a single stage attempt consumed, attributed to the team member
+/// that spent them (docs/adr/0027, docs/adr/0028).
+///
+/// A row per attempt rather than a running total on the run: a retry that
+/// burned half the budget before failing is exactly the thing a budget is
+/// supposed to notice, and a counter that only moves on success would miss
+/// it. Summing is cheap; reconstructing what was spent is not.
+/// </summary>
+public sealed class StageUsage
+{
+    public required string Id { get; init; }
+    public required string RunId { get; init; }
+    public required StageId Stage { get; init; }
+    public required int Attempt { get; init; }
+
+    /// <summary>Null when the stage called no model at all.</summary>
+    public string? TeamMemberId { get; init; }
+
+    public string? Deployment { get; init; }
+    public required int InputTokens { get; init; }
+    public required int OutputTokens { get; init; }
+    public required DateTimeOffset CreatedAt { get; init; }
+}

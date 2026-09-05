@@ -36,6 +36,7 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
+    public DbSet<StageUsage> StageUsages => Set<StageUsage>();
 
     public DbSet<Server> Servers => Set<Server>();
     public DbSet<ConformanceResult> ConformanceResults => Set<ConformanceResult>();
@@ -102,6 +103,7 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.Property(a => a.Sha256).HasMaxLength(64);
             e.HasIndex(a => a.RunId);
             e.HasIndex(a => a.ConversationId);
+            e.Property(a => a.ContentType).HasMaxLength(64);
             // Both optional, exactly one set: a run artifact (docs/adr/0004)
             // or a conversation's ContextPack. The database enforces the
             // "exactly one" with a CHECK constraint — see
@@ -275,6 +277,16 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.HasIndex(a => new { a.TeamId, a.Point }).IsUnique();
             e.HasOne<Team>().WithMany().HasForeignKey(a => a.TeamId);
             e.HasOne<TeamMember>().WithMany().HasForeignKey(a => a.TeamMemberId);
+        });
+
+        modelBuilder.Entity<StageUsage>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.Property(u => u.Stage).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(u => u.RunId);
+            e.HasIndex(u => new { u.RunId, u.TeamMemberId });
+            e.HasOne<Run>().WithMany().HasForeignKey(u => u.RunId);
+            e.HasOne<TeamMember>().WithMany().HasForeignKey(u => u.TeamMemberId).IsRequired(false);
         });
 
         modelBuilder.Entity<Server>(e =>

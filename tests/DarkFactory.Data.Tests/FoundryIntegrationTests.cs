@@ -17,9 +17,18 @@ namespace DarkFactory.Data.Tests;
 ///
 /// Run it with:
 ///   DARKFACTORY_FOUNDRY_INTEGRATION=1 \
-///   Foundry__Endpoint=https://your-resource.openai.azure.com/ \
-///   Foundry__ApiKey=...  (omit to use managed identity) \
+///   Foundry__Endpoint=&lt;your endpoint&gt; \
+///   Foundry__ApiKey=...        (omit to use managed identity) \
+///   Foundry__Deployment=...    (defaults to "architect") \
 ///   dotnet test --filter FullyQualifiedName~FoundryIntegrationTests
+///
+/// The endpoint decides which client is used, and the two are not
+/// interchangeable: <c>https://{resource}.openai.azure.com/</c> for
+/// OpenAI-family deployments, <c>https://{resource}.services.ai.azure.com/</c>
+/// for everything Foundry Models serves, Claude included. Set
+/// <c>Foundry__Api</c> to override detection. Getting this wrong produces a
+/// 401 or 404 that reads like an authentication failure — which is exactly
+/// what this test is for.
 /// </summary>
 public sealed class FoundryIntegrationTests
 {
@@ -40,6 +49,9 @@ public sealed class FoundryIntegrationTests
             // Absent means managed identity, which is what production uses
             // (docs/adr/0027). Both paths go through the same gateway.
             ApiKey = Environment.GetEnvironmentVariable("Foundry__ApiKey"),
+            Api = Enum.TryParse<FoundryApi>(Environment.GetEnvironmentVariable("Foundry__Api"), out var api)
+                ? api
+                : FoundryApi.Detect,
         };
 
         Skip.If(!options.IsConfigured, "Foundry__Endpoint is not set.");
@@ -97,9 +109,90 @@ public sealed class FoundryIntegrationTests
         var options = new FoundryOptions
         {
             Endpoint = "https://example.invalid/",
+            Api = FoundryApi.AzureOpenAI,
             Deployments = { ["planner"] = "planner-gpt5-eastus" },
         };
 
         Assert.Equal(expected, options.ResolveDeployment(role));
+    }
+
+    // ---- which wire API a resource is serving -----------------------------
+
+    [Theory]
+    [InlineData("https://my-resource.openai.azure.com/", FoundryApi.AzureOpenAI)]
+    [InlineData("https://MY-RESOURCE.OpenAI.Azure.Com/", FoundryApi.AzureOpenAI)]
+    [InlineData("https://my-resource.services.ai.azure.com/models", FoundryApi.FoundryInference)]
+    [InlineData("https://my-resource.services.ai.azure.com/", FoundryApi.FoundryInference)]
+    [InlineData("https://my-resource.inference.ai.azure.com/", FoundryApi.FoundryInference)]
+    public void TheApiIsDetectedFromTheEndpointShape(string endpoint, FoundryApi expected)
+    {
+        // GPT deployments and Claude deployments live behind different
+        // endpoints with different clients. Pointing the wrong one at the
+        // right resource fails as a 401 or 404, which looks exactly like a
+        // credential problem and is not one.
+        Assert.Equal(expected, new FoundryOptions { Endpoint = endpoint }.ResolveApi());
+    }
+
+    [Fact]
+    public void AnExplicitApiOverridesDetection()
+    {
+        var options = new FoundryOptions
+        {
+            Endpoint = "https://my-resource.openai.azure.com/",
+            Api = FoundryApi.FoundryInference,
+        };
+
+        // Custom domains and private endpoints exist; detection must be
+        // overridable rather than authoritative.
+        Assert.Equal(FoundryApi.FoundryInference, options.ResolveApi());
+    }
+
+    [Fact]
+    public void AnUnrecognisedEndpointSaysWhatToDoAboutIt()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => new FoundryOptions { Endpoint = "https://models.example.com/" }.ResolveApi());
+
+        Assert.Contains("openai.azure.com", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("services.ai.azure.com", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Foundry:Api", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("https://r.services.ai.azure.com/", "https://r.services.ai.azure.com/models")]
+    [InlineData("https://r.services.ai.azure.com/models", "https://r.services.ai.azure.com/models")]
+    [InlineData("https://r.services.ai.azure.com/models/", "https://r.services.ai.azure.com/models/")]
+    public void TheInferenceEndpointGetsTheModelsPathItNeeds(string configured, string expected)
+    {
+        // The portal shows the resource root; the inference client wants
+        // /models, and omitting it 404s in a way that reads like a missing
+        // deployment.
+        var options = new FoundryOptions { Endpoint = configured, Api = FoundryApi.FoundryInference };
+        Assert.Equal(expected, options.ResolveInferenceEndpoint().ToString());
+    }
+
+    [Fact]
+    public void ConstructingAgainstEitherApiSelectsTheMatchingClient()
+    {
+        // No network: this only proves the constructor takes the branch the
+        // endpoint implies, which is the part that is easy to get wrong and
+        // impossible to notice until a call fails.
+        var openAi = new FoundryModelGateway(
+            Options.Create(new FoundryOptions
+            {
+                Endpoint = "https://r.openai.azure.com/",
+                ApiKey = "local-dev-key",
+            }),
+            NullLogger<FoundryModelGateway>.Instance);
+        Assert.Equal(FoundryApi.AzureOpenAI, openAi.Api);
+
+        var inference = new FoundryModelGateway(
+            Options.Create(new FoundryOptions
+            {
+                Endpoint = "https://r.services.ai.azure.com/",
+                ApiKey = "local-dev-key",
+            }),
+            NullLogger<FoundryModelGateway>.Instance);
+        Assert.Equal(FoundryApi.FoundryInference, inference.Api);
     }
 }

@@ -109,5 +109,6 @@ app.MapHealthChecks("/health/ready");
 app.MapMcp("/mcp");
 app.MapHub<RunHub>("/hubs/runs");
 app.MapWebhookEndpoints();
+app.MapArtifactEndpoints();
 
 app.Run();

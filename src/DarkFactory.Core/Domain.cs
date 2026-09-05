@@ -91,8 +91,16 @@ public sealed class Artifact
     public string? RunId { get; init; }
     public string? ConversationId { get; init; }
 
-    public required string Type { get; init; } // "Plan" | "ChangeSet" | "TestReport" | "ContextPack"
+    public required string Type { get; init; } // "Plan" | "ChangeSet" | "TestReport" | "ContextPack" | "PrBody"
     public required string ContentJson { get; init; }
+
+    /// <summary>
+    /// How to serve this over HTTP. Most artifacts are JSON, but a
+    /// ChangeSet is a unified diff and a PR body is markdown — and a
+    /// workspace server piping a patch into `git apply` needs it delivered
+    /// as text, not wrapped in a JSON string it has to unwrap first.
+    /// </summary>
+    public string ContentType { get; init; } = "application/json";
     public required string Sha256 { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
 }

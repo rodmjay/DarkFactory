@@ -180,6 +180,8 @@ src/DarkFactory.Data/          EF Core DbContext (queries only), plain-.sql Migr
                                 SpecGraphService (content addressing, snapshots, diff),
                                 ServerRegistry + ConformanceChecker + ManifestLiveDiff, AppRole
 src/DarkFactory.Data/Migrations/ Hand-written, versioned .sql — the schema's source of truth (no EF Migrations)
+src/DarkFactory.Mcp/Endpoints/ArtifactEndpoints.cs  Serves artifact bodies to workspace servers over signed,
+                                scoped, expiring URLs — the one place a spoke pulls from the hub
 src/DarkFactory.Migrate/       One-shot console app: applies pending Migrations/*.sql; the only thing that migrates
 src/DarkFactory.Contracts/     C# types matching contracts/schemas, plus their schema validators
 src/DarkFactory.Foundry/       IModelGateway against Microsoft Foundry — the only project that knows a

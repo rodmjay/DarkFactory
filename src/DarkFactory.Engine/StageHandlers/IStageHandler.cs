@@ -15,7 +15,17 @@ public abstract record StageOutcome
     public sealed record Success(
         string? ArtifactType = null,
         string? ArtifactContentJson = null,
-        GateKind? RequiresGate = null) : StageOutcome;
+        GateKind? RequiresGate = null,
+        // A ChangeSet is a unified diff and a PR body is markdown; both get
+        // served over HTTP to a workspace server, which needs them as text
+        // rather than wrapped in JSON.
+        string ArtifactContentType = ArtifactContentTypes.Json,
+        // Token usage attributed to this stage, for the per-run budget
+        // (docs/adr/0028). Zero for stages that call no model.
+        int InputTokens = 0,
+        int OutputTokens = 0,
+        string? TeamMemberId = null,
+        string? Deployment = null) : StageOutcome;
 
     public sealed record Failed(FailureClass FailureClass, string Message) : StageOutcome;
 }

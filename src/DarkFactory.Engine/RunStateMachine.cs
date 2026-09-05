@@ -86,7 +86,8 @@ public sealed class RunStateMachine(
         if (success.ArtifactType is not null)
         {
             var artifact = await artifactStore.PutAsync(
-                run.OrgId, run.ProjectId, run.Id, success.ArtifactType, success.ArtifactContentJson!, cancellationToken);
+                run.OrgId, run.ProjectId, run.Id, success.ArtifactType, success.ArtifactContentJson!,
+                success.ArtifactContentType, cancellationToken);
             artifactRef = ArtifactRef.Format(artifact.Id);
         }
 
