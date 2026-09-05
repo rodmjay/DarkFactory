@@ -207,8 +207,17 @@ and deploy hooks.
 scripts/check-stack.sh
 ```
 
-It builds every Compose service from an empty volume and waits for all of
-them to report healthy. **No session commits to main without it passing.**
+It builds every Compose service from an empty volume, waits for all of them
+to report healthy, and separately exercises the path a developer takes —
+`pnpm build` then `pnpm start`, checking that the page serves, that the
+server does not report its own configuration unsupported, and that its
+assets actually resolve. **No session commits to main without it passing.**
+
+Those three web assertions are not redundant. `next start` under
+`output: "standalone"` returns 200 from the wrong build while warning that
+it does not work, and a standalone server without its static copy returns
+200 with a clean log and a blank white page. Each assertion exists because
+the one before it went green on a broken thing.
 
 If it reports a host port collision, that is this machine and not the code:
 every published port is configurable, so set `POSTGRES_PORT`, `FACTORY_PORT`,
