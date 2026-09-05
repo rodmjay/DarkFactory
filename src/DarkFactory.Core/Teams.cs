@@ -92,26 +92,62 @@ public sealed class Assignment
 }
 
 /// <summary>
-/// Tokens a single stage attempt consumed, attributed to the team member
-/// that spent them (docs/adr/0027, docs/adr/0028).
+/// One row per gateway call (docs/adr/0032). Append-only, written by the
+/// gateway and never by an agent.
 ///
-/// A row per attempt rather than a running total on the run: a retry that
-/// burned half the budget before failing is exactly the thing a budget is
-/// supposed to notice, and a counter that only moves on success would miss
-/// it. Summing is cheap; reconstructing what was spent is not.
+/// Cached and thinking counts are <em>breakdowns</em>: cached input is part
+/// of <see cref="InputTokensUncached"/> + <see cref="InputTokensCached"/>
+/// making up the input, and thinking is part of the output. They are held
+/// apart because they are billed apart — a cost model built on totals is
+/// wrong in the direction that flatters us.
 /// </summary>
-public sealed class StageUsage
+public sealed class ModelCall
 {
     public required string Id { get; init; }
-    public required string RunId { get; init; }
-    public required StageId Stage { get; init; }
+
+    // ---- identity ----
+    public required string OrgId { get; init; }
+    public string? ProjectId { get; init; }
+    public string? RunId { get; init; }
+    public string? BatchId { get; init; }
+
+    /// <summary>A pipeline stage, or a non-stage point such as "conversation".</summary>
+    public string? StageId { get; init; }
+
+    public string? TaskId { get; init; }
     public required int Attempt { get; init; }
-
-    /// <summary>Null when the stage called no model at all.</summary>
     public string? TeamMemberId { get; init; }
+    public string? PersonaId { get; init; }
 
-    public string? Deployment { get; init; }
-    public required int InputTokens { get; init; }
+    /// <summary>The role the caller asked for; the model behind it is <see cref="ModelFamily"/>.</summary>
+    public required string Deployment { get; init; }
+
+    public required string Provider { get; init; }
+    public required string ModelFamily { get; init; }
+
+    // ---- inputs ----
+    public required int InputTokensUncached { get; init; }
+    public required int InputTokensCached { get; init; }
+    public required int CacheWriteTokens { get; init; }
+    public string? ContextPackRef { get; init; }
+    public string[] SkillRevisions { get; init; } = [];
+    public string? PromptTemplateVersion { get; init; }
+    public string? ThinkingPreset { get; init; }
+
+    // ---- outputs ----
     public required int OutputTokens { get; init; }
+    public required int ThinkingTokens { get; init; }
+    public required long LatencyMs { get; init; }
+    public decimal? Cost { get; init; }
+
+    // ---- outcome, completed by the caller once it knows one ----
+    public bool? ArtifactValidFirstTry { get; set; }
+    public bool? Retried { get; set; }
+    public bool? Steered { get; set; }
+    public string? StageResult { get; set; }
+
     public required DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>What a budget counts: billable volume, not a sum of every column.</summary>
+    public int TotalTokens => InputTokensUncached + InputTokensCached + OutputTokens;
 }

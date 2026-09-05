@@ -396,28 +396,17 @@ run_id?)`, `batches.status`, `batches.deployed_at`.
 
 ## Addendum — ADR-0030
 
-**ADR-0030 — Claude Code hooks are mapped mechanically to factory commands
-under the `df:` namespace.**
-A developer's Claude Code session is part of the factory whether or not the
-web UI is open. A `df-hook` CLI is installed with the project; every Claude
-Code hook entry invokes `df-hook <event>`, and `.dark-factory/hooks.json`
-maps lifecycle events to factory commands as data, per project. Default
-mapping: `SessionStart → df.context.pull` (inject spec neighborhood and
-standards summary into session context), `UserPromptSubmit → df.specs.query`
-(attach related spec nodes), `PreToolUse[Write|Edit] → df.specs.check`
-(block or warn on edits to code whose spec reference has no approved
-amendment), `PostToolUse[Bash git commit] → df.specs.reconcile` (record
-drift), `Stop`/`SessionEnd → df.sessions.record` (audit),
-`WorktreeCreate → df.projects.select`, `TaskCompleted → df.work.report`.
-Rules: hooks read a local cache and post to the factory asynchronously so
-they stay fast; only `df.specs.check` on `PreToolUse` may block, and only
-when the project's gate config enables it; every call carries the Claude
-session id as its idempotency key; hooks fire deterministically and never
-depend on the model choosing to call a tool. The hook pack, the factory MCP
-server entry, and the `df` skills ship together as a single installable
-Claude Code plugin.
+**ADR-0030 — Claude Code hooks are mapped mechanically to factory commands under the `df:` namespace.**
+A developer's Claude Code session is part of the factory whether or not the web UI is open. A `df-hook` CLI is installed with the project; every Claude Code hook entry invokes `df-hook <event>`, and `.dark-factory/hooks.json` maps lifecycle events to factory commands as data, per project. Default mapping: `SessionStart → df.context.pull` (inject spec neighborhood and standards summary into session context), `UserPromptSubmit → df.specs.query` (attach related spec nodes), `PreToolUse[Write|Edit] → df.specs.check` (block or warn on edits to code whose spec reference has no approved amendment), `PostToolUse[Bash git commit] → df.specs.reconcile` (record drift), `Stop`/`SessionEnd → df.sessions.record` (audit), `WorktreeCreate → df.projects.select`, `TaskCompleted → df.work.report`. Rules: hooks read a local cache and post to the factory asynchronously so they stay fast; only `df.specs.check` on `PreToolUse` may block, and only when the project's gate config enables it; every call carries the Claude session id as its idempotency key; hooks fire deterministically and never depend on the model choosing to call a tool. The hook pack, the factory MCP server entry, and the `df` skills ship together as a single installable Claude Code plugin. Data model: `sessions(id, project_id, claude_session_id, started_at, ended_at)`, `session_events(session_id, event, command, payload_ref, at)`. Out of scope for step 3; scheduled after step 4.
 
-**Data model:** `sessions(id, project_id, claude_session_id, started_at,
-ended_at)`, `session_events(session_id, event, command, payload_ref, at)`.
+**ADR-0028 — Amendment: centralized skills.**
+Skills are held centrally in the factory: one library per org with project-level overrides, each skill a stable id with immutable revisions. Native agents read skills from the factory at run time; Claude Code sessions receive the project's resolved skill set mechanically via `SessionStart → df.skills.sync`, which pins them into `.claude/skills/` by revision (the factory may also expose itself as a Claude Code plugin marketplace). Standards servers may ship skills; community skills are free. A run's team snapshot records every skill revision in use, so behavior is always traceable to a skill version. Data model: `skills`, `skill_revisions`, `skill_assignments(scope ∈ {org, project, team_member}, skill_id, revision_hash)`.
 
-**Scheduling:** out of scope for step 3; scheduled after step 4.
+**ADR-0031 — Local-first sync with PowerSync: reads sync down to OPFS/SQLite, writes are `df.*` commands.**
+The web UI and the `df-hook` CLI each hold a local SQLite mirror kept current by PowerSync (web: OPFS VFS; CLI: Node SDK). Sync rules bucket by `org_id` and `project_id` from the JWT, enforcing tenancy in the sync layer. Synced: projects, spec_nodes, spec_revisions, spec_edges, spec_snapshots, snapshot_members, snapshot_edges, amendments, approvals, conversations, turns, runs, stages, events, batches, batch_items, teams, team_members, skills, skill_revisions, servers (non-secret columns). Never synced: artifact bodies, standards_index, audit_log, provenance secrets, effective_config secrets. All client writes go through the PowerSync backend connector to a `df.*` command; there are no raw table writes from clients. Append-only tables mean no conflict resolution; write checkpoints reconcile optimistic local rows. Consequences: `migrate` owns `wal_level=logical`, the publication, and the PowerSync sync-rules file; the PowerSync Open Edition service joins Compose and the self-hosted image; live dashboard updates come from the synced `events` table, leaving SignalR only for streaming agent turns during `df.work.attach` (to be removed if turn streaming moves to a table); the `df-hook` local cache is the synced SQLite. Client schema is declared per table in the web app; adding a synced table is a two-schema change. Scheduled with step 4 (web UI).
+
+**Note (deferred, not an ADR) — Personas.** Team members may be sold as named, pictured personas: a persona bundles a role, a model deployment, skills, and a monthly price under a name, portrait, and description, so the team page becomes a roster to hire from. Branded standards authors may publish personas that embody their standards. The card must state the underlying model family. No schema yet; `team_members` should leave room for a nullable `persona_id`.
+A persona also declares a **speed** preset (quick / balanced / deliberate) that maps to the gateway's per-call thinking budget; speed is independent of model family, so two personas on one model may differ in price and depth. Thinking tokens count against member budgets.
+
+**ADR-0032 — Every model call writes a usage fact row; optimization is a query, not a guess.**
+`model_calls` is an append-only fact table with one row per gateway call: `org_id, project_id, run_id, batch_id?, stage_id, task_id?, attempt, team_member_id, persona_id?, deployment, provider, model_family`; inputs `input_tokens_uncached, input_tokens_cached, cache_write_tokens, context_pack_ref, skill_revisions[], prompt_template_version, thinking_preset`; outputs `output_tokens, thinking_tokens, latency_ms, cost`; outcome `artifact_valid_first_try, retried, steered, stage_result`. Written by the gateway, never by agents. Budget enforcement (3d) reads from it rather than keeping a separate ledger. Roll-ups per project and org feed the dashboard and billing; per-dimension views answer which skill revisions, context sizes, personas, and cache strategies improve outcome per token. Effective immediately: the three 3d agents must write these rows on every call.

@@ -36,7 +36,7 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
-    public DbSet<StageUsage> StageUsages => Set<StageUsage>();
+    public DbSet<ModelCall> ModelCalls => Set<ModelCall>();
 
     public DbSet<Server> Servers => Set<Server>();
     public DbSet<ConformanceResult> ConformanceResults => Set<ConformanceResult>();
@@ -279,14 +279,18 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.HasOne<TeamMember>().WithMany().HasForeignKey(a => a.TeamMemberId);
         });
 
-        modelBuilder.Entity<StageUsage>(e =>
+        modelBuilder.Entity<ModelCall>(e =>
         {
-            e.HasKey(u => u.Id);
-            e.Property(u => u.Stage).HasConversion<string>().HasMaxLength(32);
-            e.HasIndex(u => u.RunId);
-            e.HasIndex(u => new { u.RunId, u.TeamMemberId });
-            e.HasOne<Run>().WithMany().HasForeignKey(u => u.RunId);
-            e.HasOne<TeamMember>().WithMany().HasForeignKey(u => u.TeamMemberId).IsRequired(false);
+            e.HasKey(c => c.Id);
+            e.HasIndex(c => c.RunId);
+            // Backs the budget question: what has this member spent on this
+            // run? (docs/adr/0032 — budgets read from here, not a ledger.)
+            e.HasIndex(c => new { c.RunId, c.TeamMemberId });
+            // Backs the roll-ups that feed the dashboard and billing.
+            e.HasIndex(c => new { c.OrgId, c.CreatedAt });
+            e.HasIndex(c => new { c.ProjectId, c.CreatedAt });
+            e.HasOne<Run>().WithMany().HasForeignKey(c => c.RunId).IsRequired(false);
+            e.HasOne<TeamMember>().WithMany().HasForeignKey(c => c.TeamMemberId).IsRequired(false);
         });
 
         modelBuilder.Entity<Server>(e =>

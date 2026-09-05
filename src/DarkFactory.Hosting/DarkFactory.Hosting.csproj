@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DarkFactory.Hosting</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Composition only. This project exists so `factory` and `worker`
+         share one provider-selection decision instead of two copies that
+         can drift; it is the only thing that references a provider, and
+         nothing references it except those two hosts (docs/adr/0027). -->
+    <ProjectReference Include="..\DarkFactory.Core\DarkFactory.Core.csproj" />
+    <!-- For RecordingModelGateway: docs/adr/0032's fact rows are
+         written by the gateway, so the decorator is wired here where
+         no caller can be handed a provider directly. -->
+    <ProjectReference Include="..\DarkFactory.Data\DarkFactory.Data.csproj" />
+    <ProjectReference Include="..\DarkFactory.Foundry\DarkFactory.Foundry.csproj" />
+    <ProjectReference Include="..\DarkFactory.Anthropic\DarkFactory.Anthropic.csproj" />
+  </ItemGroup>
+
+</Project>

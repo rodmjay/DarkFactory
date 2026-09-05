@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DarkFactory.Anthropic</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Core only, exactly as DarkFactory.Foundry. This project is one of
+         the two places that know a provider exists; nothing references it
+         except composition roots (docs/adr/0027). -->
+    <ProjectReference Include="..\DarkFactory.Core\DarkFactory.Core.csproj" />
+  </ItemGroup>
+
+</Project>

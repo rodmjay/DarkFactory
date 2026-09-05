@@ -1,4 +1,5 @@
 using DarkFactory.Data;
+using DarkFactory.Hosting;
 using DarkFactory.Engine;
 using DarkFactory.Engine.StageHandlers;
 using OpenTelemetry.Resources;
@@ -26,6 +27,11 @@ builder.Services.AddOpenTelemetry()
     });
 
 builder.Services.AddDarkFactoryData(builder.Configuration);
+
+// The worker runs the stage agents, so it needs a model gateway — chosen
+// by exactly the same code as `factory` uses, so the two hosts cannot
+// disagree about which model serves a run (docs/adr/0027).
+builder.Services.AddModelGateway(builder.Configuration);
 builder.Services.Configure<EngineOptions>(builder.Configuration.GetSection(EngineOptions.SectionName));
 
 builder.Services.AddScoped<IStageHandler, IntakeStageHandler>();

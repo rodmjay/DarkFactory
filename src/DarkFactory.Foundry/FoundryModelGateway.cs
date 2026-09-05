@@ -25,6 +25,9 @@ namespace DarkFactory.Foundry;
 /// </summary>
 public sealed class FoundryModelGateway : IModelGateway
 {
+    /// <summary>Recorded on every usage fact row (docs/adr/0032).</summary>
+    public const string ProviderName = "foundry";
+
     private readonly FoundryOptions _options;
     private readonly FoundryApi _api;
     private readonly ILogger<FoundryModelGateway> _logger;
@@ -93,14 +96,22 @@ public sealed class FoundryModelGateway : IModelGateway
         ModelRequest request, CancellationToken cancellationToken = default)
     {
         var deployment = _options.ResolveDeployment(request.Deployment);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
-            return _api switch
+            var completion = _api switch
             {
-                FoundryApi.AzureOpenAI => await CompleteViaAzureOpenAIAsync(request, deployment, cancellationToken),
-                FoundryApi.FoundryInference => await CompleteViaInferenceAsync(request, deployment, cancellationToken),
+                FoundryApi.AzureOpenAI => CompleteViaAzureOpenAIAsync(request, deployment, cancellationToken),
+                FoundryApi.FoundryInference => CompleteViaInferenceAsync(request, deployment, cancellationToken),
                 _ => throw new InvalidOperationException($"Unsupported Foundry API '{_api}'."),
+            };
+
+            return (await completion) with
+            {
+                LatencyMs = stopwatch.ElapsedMilliseconds,
+                Provider = ProviderName,
+                ModelFamily = deployment,
             };
         }
         catch (RequestFailedException ex)
@@ -161,7 +172,14 @@ public sealed class FoundryModelGateway : IModelGateway
 
         return new ModelCompletion(
             text,
-            new ModelUsage(completion.Usage?.InputTokenCount ?? 0, completion.Usage?.OutputTokenCount ?? 0),
+            new ModelUsage(
+                InputTokens: completion.Usage?.InputTokenCount ?? 0,
+                OutputTokens: completion.Usage?.OutputTokenCount ?? 0,
+                // Both providers must populate the same breakdown, or a
+                // per-dimension query in docs/adr/0032 silently means
+                // different things depending on who served the call.
+                CachedInputTokens: completion.Usage?.InputTokenDetails?.CachedTokenCount ?? 0,
+                ThinkingTokens: completion.Usage?.OutputTokenDetails?.ReasoningTokenCount ?? 0),
             deployment);
     }
 
@@ -194,7 +212,9 @@ public sealed class FoundryModelGateway : IModelGateway
 
         return new ModelCompletion(
             completion.Content ?? "",
-            new ModelUsage(completion.Usage?.PromptTokens ?? 0, completion.Usage?.CompletionTokens ?? 0),
+            new ModelUsage(
+                InputTokens: completion.Usage?.PromptTokens ?? 0,
+                OutputTokens: completion.Usage?.CompletionTokens ?? 0),
             deployment);
     }
 }

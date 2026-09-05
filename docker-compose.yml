@@ -47,6 +47,8 @@ services:
       ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=darkfactory_app;Password=${APP_DB_PASSWORD:-darkfactory_app}"
       Artifacts__PublicBaseUrl: ${ARTIFACTS_PUBLIC_BASE_URL:-http://factory:8080}
       Artifacts__SigningKey: ${ARTIFACTS_SIGNING_KEY:-local-dev-artifact-signing-key}
+      ModelGateway__Provider: ${MODEL_GATEWAY_PROVIDER:-}
+      Anthropic__ApiKey: ${ANTHROPIC_API_KEY:-}
       Foundry__Endpoint: ${Foundry__Endpoint:-}
       Foundry__ApiKey: ${Foundry__ApiKey:-}
       Foundry__ResourceName: ${Foundry__ResourceName:-}
@@ -77,6 +79,8 @@ services:
       ConnectionStrings__DarkFactory: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-darkfactory};Username=darkfactory_app;Password=${APP_DB_PASSWORD:-darkfactory_app}"
       Artifacts__PublicBaseUrl: ${ARTIFACTS_PUBLIC_BASE_URL:-http://factory:8080}
       Artifacts__SigningKey: ${ARTIFACTS_SIGNING_KEY:-local-dev-artifact-signing-key}
+      ModelGateway__Provider: ${MODEL_GATEWAY_PROVIDER:-}
+      Anthropic__ApiKey: ${ANTHROPIC_API_KEY:-}
       Foundry__Endpoint: ${Foundry__Endpoint:-}
       Foundry__ApiKey: ${Foundry__ApiKey:-}
       Foundry__ResourceName: ${Foundry__ResourceName:-}

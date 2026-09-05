@@ -57,3 +57,41 @@ abstraction knows which provider is actually behind it.
   (`docs/architecture-brief.md`'s "Step 3 amendment"); the deterministic
   stub stage handlers written in step 2 predate `IModelGateway` entirely
   and don't yet call it.
+
+## Note (added during step 3d): Anthropic-direct is the development provider
+
+`IModelGateway` now has two implementations.
+
+**Microsoft Foundry remains the production target**, and everything above
+about it stands: Entra managed identity, no vendor key in production,
+role-named deployments, Foundry metering as the source of truth for cost,
+and the bring-your-own-Foundry story that lets an org keep prompts in its
+own tenant and tokens on its own bill.
+
+**`DarkFactory.Anthropic` calls the Anthropic Messages API directly**, and
+exists so the factory can be built, tested and demonstrated before a
+Foundry resource is provisioned. It is selected by
+`ModelGateway:Provider` (`Anthropic` | `Foundry`); with neither set, the
+provider is inferred from whichever is configured, and having *both*
+configured is an error rather than a silent choice, because picking one on
+a customer's behalf is how a run gets billed to the wrong account.
+
+Role names are the interface on both. `architect`, `planner`,
+`implementer`, `reviewer` and `router` map to Foundry deployment names on
+one and to model ids on the other, in configuration — so
+[ADR-0022](0022-model-assignment-is-policy.md)'s policy is expressed the
+same way regardless of who serves it, and nothing above the gateway changes
+when the provider does.
+
+Both report token usage identically, which is what
+[ADR-0028](0028-project-agent-teams.md)'s budgets count. A budget that only
+worked on one provider would not be a budget.
+
+### Consequence worth stating
+
+A second implementation is the first real test of whether this ADR's
+abstraction was ever true. An interface with one implementation is a claim;
+two is a seam. Provider containment is therefore a rule with teeth: only
+`DarkFactory.Hosting` — the composition helper both `factory` and `worker`
+call — may reference either provider project, and a test asserts nothing
+else does.

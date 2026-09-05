@@ -66,3 +66,48 @@ v1's UI and engine only ever look at one active team per project.
 - This ADR's tables (`teams`, `team_revisions`, `team_members`, `skills`,
   `skill_revisions`, `assignments`) are step 3c work, not step 3a — 3a's
   migration does not create them.
+
+## Amendment: centralized skills
+
+Skills are held **centrally in the factory**: one library per org with
+project-level overrides, each skill a stable id with immutable revisions —
+the same shape as the spec graph
+([ADR-0016](0016-spec-graph-content-addressed-append-only.md)), for the
+same reason.
+
+Native agents read skills from the factory at run time. Claude Code
+sessions receive the project's resolved skill set **mechanically**, via
+`SessionStart → df.skills.sync`
+([ADR-0030](0030-claude-code-hooks-as-factory-commands.md)), which pins
+them into `.claude/skills/` by revision; the factory may also expose itself
+as a Claude Code plugin marketplace. Standards servers may ship skills;
+community skills are free.
+
+**A run's team snapshot records every skill revision in use**, so behavior
+is always traceable to a skill version — a run that behaved oddly can be
+explained by the instructions it actually had, not the ones the library
+holds today.
+
+**Data model:** `skills`, `skill_revisions`, and
+`skill_assignments(scope ∈ {org, project, team_member}, skill_id,
+revision_hash)`.
+
+The consequence worth noting: skills stop being a per-repository file that
+drifts between checkouts and become versioned, assignable configuration
+with an owner. That is what makes them a plugin surface rather than a
+convention.
+
+## Amendment: personas (deferred)
+
+Team members may eventually be sold as named, pictured **personas** — a
+role, a deployment, skills and a price under a name and portrait, turning
+the team page into a roster. A persona also declares a **speed** preset
+(quick / balanced / deliberate) mapping to the gateway's per-call thinking
+budget, so two personas on the same model may differ in price and depth.
+Thinking tokens count against member budgets
+([ADR-0032](0032-usage-fact-rows.md)).
+
+No schema yet. `team_members` leaves room for a nullable `persona_id`, and
+`model_calls` records `persona_id` and `thinking_preset` from the start so
+the question "is deliberate worth it?" is answerable the day personas
+arrive rather than only after a migration.

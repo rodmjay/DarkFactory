@@ -27,9 +27,10 @@
     <ProjectReference Include="..\DarkFactory.Contracts\DarkFactory.Contracts.csproj" />
     <ProjectReference Include="..\DarkFactory.Data\DarkFactory.Data.csproj" />
     <ProjectReference Include="..\DarkFactory.Client\DarkFactory.Client.csproj" />
-    <!-- The composition root is allowed to know a provider exists;
-         nothing above IModelGateway is (docs/adr/0027). -->
-    <ProjectReference Include="..\DarkFactory.Foundry\DarkFactory.Foundry.csproj" />
+    <!-- Provider selection lives in DarkFactory.Hosting, shared with the
+         worker so the two hosts cannot disagree about which model serves a
+         run (docs/adr/0027). -->
+    <ProjectReference Include="..\DarkFactory.Hosting\DarkFactory.Hosting.csproj" />
   </ItemGroup>
 
 </Project>

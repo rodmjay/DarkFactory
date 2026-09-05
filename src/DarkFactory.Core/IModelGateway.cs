@@ -25,26 +25,128 @@ public sealed record ModelMessage(ModelRole Role, string Content);
 /// A role-named deployment (docs/adr/0027), never a vendor model id. The
 /// gateway is the only thing that knows which model that resolves to.
 /// </param>
+/// <param name="Context">
+/// Who this call is for, so the gateway can write its usage fact row
+/// (docs/adr/0032). The gateway cannot record a run or a stage it was
+/// never told about, and an agent trusted to record its own usage is an
+/// agent that can forget to — so the context travels with the request.
+/// </param>
 public sealed record ModelRequest(
     string Deployment,
     string SystemPrompt,
     IReadOnlyList<ModelMessage> Messages,
     int MaxOutputTokens = 8192,
-    double? Temperature = null);
+    double? Temperature = null,
+    ModelCallContext? Context = null);
+
+/// <summary>
+/// The dimensions docs/adr/0032 records against every call. Almost
+/// everything is optional because not every caller has every dimension —
+/// a conversational turn has no run, a first attempt has no retry — and a
+/// fact table with honest nulls beats one with invented values.
+/// </summary>
+public sealed record ModelCallContext
+{
+    public string? OrgId { get; init; }
+    public string? ProjectId { get; init; }
+    public string? RunId { get; init; }
+    public string? BatchId { get; init; }
+
+    /// <summary>The pipeline stage, or a non-stage point like "conversation".</summary>
+    public string? StageId { get; init; }
+
+    public string? TaskId { get; init; }
+    public int Attempt { get; init; } = 1;
+    public string? TeamMemberId { get; init; }
+    public string? PersonaId { get; init; }
+
+    /// <summary>Ref of the ContextPack the model was shown, so cost can be joined to context size.</summary>
+    public string? ContextPackRef { get; init; }
+
+    public IReadOnlyList<string> SkillRevisions { get; init; } = [];
+    public string? PromptTemplateVersion { get; init; }
+
+    /// <summary>quick | balanced | deliberate (docs/adr/0028's persona speed preset).</summary>
+    public string? ThinkingPreset { get; init; }
+
+    /// <summary>
+    /// Outcome, known only after the caller has judged the result. Set by
+    /// the caller on the row the gateway already wrote — see
+    /// <see cref="IModelCallLog"/>.
+    /// </summary>
+    public bool? Retried { get; init; }
+
+    public bool? Steered { get; init; }
+}
+
+/// <summary>
+/// Lets a caller complete the outcome half of a usage fact row it could not
+/// know at call time — whether the artifact validated first try, and how
+/// the stage ended (docs/adr/0032).
+///
+/// Deliberately separate from <see cref="IModelGateway"/>: the gateway
+/// writes the row unconditionally, and this only ever annotates a row that
+/// already exists. A caller that never annotates loses the outcome
+/// columns, not the call.
+/// </summary>
+public interface IModelCallLog
+{
+    Task RecordOutcomeAsync(
+        string modelCallId,
+        bool? artifactValidFirstTry = null,
+        bool? retried = null,
+        bool? steered = null,
+        string? stageResult = null,
+        CancellationToken cancellationToken = default);
+}
 
 /// <param name="Deployment">Echoed back so an audit record says which deployment actually served the call, including after a fallback.</param>
 public sealed record ModelCompletion(
     string Text,
     ModelUsage Usage,
-    string Deployment);
+    string Deployment)
+{
+    /// <summary>
+    /// The <c>model_calls</c> row this call wrote (docs/adr/0032), so the
+    /// caller can annotate its outcome once it knows one. Null when no
+    /// recorder is wired — the providers themselves never set it.
+    /// </summary>
+    public string? ModelCallId { get; init; }
+
+    /// <summary>Wall-clock time of the provider call, recorded on the fact row.</summary>
+    public long LatencyMs { get; init; }
+
+    /// <summary>Which provider served it, for the fact row's per-dimension queries.</summary>
+    public string? Provider { get; init; }
+
+    /// <summary>The concrete model behind the deployment name.</summary>
+    public string? ModelFamily { get; init; }
+}
 
 /// <summary>
-/// Token counts as the provider reported them. docs/adr/0027 makes Foundry
+/// Token counts as the provider reported them. docs/adr/0027 makes provider
 /// metering the source of truth for cost; this is what the factory records
-/// per turn so usage is visible without querying the provider.
+/// so usage is visible without querying the provider.
+///
+/// <para><b>Cached and thinking counts are breakdowns, not additions.</b>
+/// <see cref="CachedInputTokens"/> and <see cref="CacheWriteInputTokens"/>
+/// are portions of <see cref="InputTokens"/>; <see cref="ThinkingTokens"/>
+/// is a portion of <see cref="OutputTokens"/>. Summing all five would
+/// double-count, which is why <see cref="TotalTokens"/> does not.</para>
+///
+/// <para>They are carried separately because they are billed differently —
+/// a cache read costs a fraction of a fresh input token — so a budget or a
+/// cost report built on the totals alone would be wrong in the direction
+/// that matters.</para>
 /// </summary>
-public sealed record ModelUsage(int InputTokens, int OutputTokens)
+public sealed record ModelUsage(
+    int InputTokens,
+    int OutputTokens,
+    int CachedInputTokens = 0,
+    int CacheWriteInputTokens = 0,
+    int ThinkingTokens = 0)
 {
+    /// <summary>Billable volume. Deliberately not a sum of every field — see the note above.</summary>
     public int TotalTokens => InputTokens + OutputTokens;
 
     public static ModelUsage None { get; } = new(0, 0);

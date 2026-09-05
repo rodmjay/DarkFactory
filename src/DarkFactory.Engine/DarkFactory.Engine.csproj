@@ -20,6 +20,9 @@
     <ProjectReference Include="..\DarkFactory.Contracts\DarkFactory.Contracts.csproj" />
     <ProjectReference Include="..\DarkFactory.Data\DarkFactory.Data.csproj" />
     <ProjectReference Include="..\DarkFactory.Client\DarkFactory.Client.csproj" />
+    <!-- The worker runs the stage agents, so it needs a model gateway.
+         Same selection as `factory`, from the same place. -->
+    <ProjectReference Include="..\DarkFactory.Hosting\DarkFactory.Hosting.csproj" />
   </ItemGroup>
 
 </Project>

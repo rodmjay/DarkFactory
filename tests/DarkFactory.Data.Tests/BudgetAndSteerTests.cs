@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DarkFactory.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace DarkFactory.Data.Tests;
@@ -55,39 +56,148 @@ public sealed class BudgetAndSteerTests(SpecGraphTestFixture fixture)
 
     // ---- budgets ----------------------------------------------------------
 
+    /// <summary>
+    /// Drives the real recording gateway rather than inserting rows.
+    /// docs/adr/0032 says these rows are written by the gateway and never by
+    /// an agent, so a test that wrote them itself would prove nothing about
+    /// the thing the ADR actually promises.
+    /// </summary>
+    private RecordingModelGateway Recording(FakeModelGateway inner, DarkFactoryDbContext db) =>
+        new(inner, db, NullLogger<RecordingModelGateway>.Instance);
+
+    private static ModelRequest Call(ResolvedAgent agent, Run run, StageId stage, int attempt) =>
+        new(agent.Deployment, "system", [new ModelMessage(ModelRole.User, "go")],
+            Context: new ModelCallContext
+            {
+                OrgId = run.OrgId,
+                ProjectId = run.ProjectId,
+                RunId = run.Id,
+                StageId = stage.ToString(),
+                Attempt = attempt,
+                TeamMemberId = agent.TeamMemberId,
+            });
+
     [Fact]
-    public async Task UsageIsRecordedPerStageAttemptAndSummedPerRun()
+    public async Task TheGatewayWritesAFactRowForEveryCall()
     {
         var (run, agent) = await SeedRunAsync();
+        var inner = new FakeModelGateway().Responds("one").Responds("two").Responds("three");
 
         await using (var db = fixture.NewDb())
         {
-            var budgets = new BudgetService(db);
-            await budgets.RecordAsync(run, StageId.Plan, 1, agent.TeamMemberId, agent.Deployment, new ModelUsage(100, 40));
-            await budgets.RecordAsync(run, StageId.Implement, 1, agent.TeamMemberId, agent.Deployment, new ModelUsage(200, 60));
+            var gateway = Recording(inner, db);
+            await gateway.CompleteAsync(Call(agent, run, StageId.Plan, 1));
+            await gateway.CompleteAsync(Call(agent, run, StageId.Implement, 1));
             // A failed attempt still spent tokens. A counter that only moved
             // on success would never see this, which is exactly the spend a
             // budget exists to catch.
-            await budgets.RecordAsync(run, StageId.Implement, 2, agent.TeamMemberId, agent.Deployment, new ModelUsage(150, 50));
+            await gateway.CompleteAsync(Call(agent, run, StageId.Implement, 2));
         }
 
         await using var verify = fixture.NewDb();
-        Assert.Equal(600, await new BudgetService(verify).TotalForRunAsync(run.Id));
+        var rows = await verify.ModelCalls.AsNoTracking()
+            .Where(c => c.RunId == run.Id).OrderBy(c => c.CreatedAt).ToListAsync();
 
-        var rows = await verify.StageUsages.AsNoTracking().Where(u => u.RunId == run.Id).ToListAsync();
         Assert.Equal(3, rows.Count);
-        Assert.Equal([1, 1, 2], rows.OrderBy(r => r.CreatedAt).Select(r => r.Attempt));
+        Assert.Equal([1, 1, 2], rows.Select(r => r.Attempt));
+        Assert.Equal(["Plan", "Implement", "Implement"], rows.Select(r => r.StageId));
+        Assert.All(rows, r =>
+        {
+            Assert.Equal(run.OrgId, r.OrgId);
+            Assert.Equal(agent.TeamMemberId, r.TeamMemberId);
+            Assert.Equal(agent.Deployment, r.Deployment);
+            Assert.True(r.OutputTokens > 0);
+        });
+
+        // Budgets read from the facts, not a ledger (docs/adr/0032).
+        Assert.Equal(450, await new BudgetService(verify).TotalForRunAsync(run.Id));
+    }
+
+    [Fact]
+    public async Task CachedAndThinkingCountsAreBreakdownsNotAdditions()
+    {
+        var (run, agent) = await SeedRunAsync();
+
+        // 1000 input of which 400 came from cache, 200 output of which 50
+        // was thinking. Billable volume is 1200, not 1650.
+        var inner = new FakeModelGateway().RespondsWithUsage(
+            "ok", new ModelUsage(1000, 200, CachedInputTokens: 400, CacheWriteInputTokens: 30, ThinkingTokens: 50));
+
+        await using (var db = fixture.NewDb())
+        {
+            await Recording(inner, db).CompleteAsync(Call(agent, run, StageId.Implement, 1));
+        }
+
+        await using var verify = fixture.NewDb();
+        var row = await verify.ModelCalls.AsNoTracking().SingleAsync(c => c.RunId == run.Id);
+
+        // The two halves of the input are stored apart because they are
+        // billed apart — a cost model on totals alone flatters us.
+        Assert.Equal(600, row.InputTokensUncached);
+        Assert.Equal(400, row.InputTokensCached);
+        Assert.Equal(30, row.CacheWriteTokens);
+        Assert.Equal(200, row.OutputTokens);
+        Assert.Equal(50, row.ThinkingTokens);
+
+        Assert.Equal(1200, row.TotalTokens);
+        Assert.Equal(1200, await new BudgetService(verify).TotalForRunAsync(run.Id));
+    }
+
+    [Fact]
+    public async Task AFailedCallStillLeavesARow()
+    {
+        var (run, agent) = await SeedRunAsync();
+        var inner = new FakeModelGateway().Fails("the provider said no");
+
+        await using (var db = fixture.NewDb())
+        {
+            await Assert.ThrowsAsync<ModelGatewayException>(
+                () => Recording(inner, db).CompleteAsync(Call(agent, run, StageId.Implement, 1)));
+        }
+
+        // "Which deployment fails most" is a question only these rows
+        // answer, and a cost report that skips failures under-counts every
+        // retry.
+        await using var verify = fixture.NewDb();
+        var row = await verify.ModelCalls.AsNoTracking().SingleAsync(c => c.RunId == run.Id);
+        Assert.StartsWith("gateway_error:", row.StageResult!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheCallerCompletesTheOutcomeColumnsItCouldNotKnowAtCallTime()
+    {
+        var (run, agent) = await SeedRunAsync();
+        var inner = new FakeModelGateway().Responds("ok");
+
+        await using (var db = fixture.NewDb())
+        {
+            var gateway = Recording(inner, db);
+            var completion = await gateway.CompleteAsync(Call(agent, run, StageId.Implement, 1));
+
+            Assert.NotNull(completion.ModelCallId);
+            await gateway.RecordOutcomeAsync(
+                completion.ModelCallId!, artifactValidFirstTry: true, stageResult: "succeeded");
+        }
+
+        await using var verify = fixture.NewDb();
+        var row = await verify.ModelCalls.AsNoTracking().SingleAsync(c => c.RunId == run.Id);
+
+        // Tokens alone rank the cheapest model best at everything. Tokens
+        // beside "did it work first time" is what makes docs/adr/0022's
+        // verifiability criterion measurable.
+        Assert.True(row.ArtifactValidFirstTry);
+        Assert.Equal("succeeded", row.StageResult);
     }
 
     [Fact]
     public async Task AMemberUnderBudgetIsNotExceeded()
     {
         var (run, agent) = await SeedRunAsync(budget: 1000);
+        var inner = new FakeModelGateway().RespondsWithUsage("ok", new ModelUsage(400, 100));
 
         await using (var db = fixture.NewDb())
         {
-            await new BudgetService(db).RecordAsync(
-                run, StageId.Implement, 1, agent.TeamMemberId, agent.Deployment, new ModelUsage(400, 100));
+            await Recording(inner, db).CompleteAsync(Call(agent, run, StageId.Implement, 1));
         }
 
         await using var verify = fixture.NewDb();
@@ -103,35 +213,26 @@ public sealed class BudgetAndSteerTests(SpecGraphTestFixture fixture)
     public async Task DrivingAMemberPastItsBudgetParksTheStageForAHuman()
     {
         var (run, agent) = await SeedRunAsync(budget: 500);
-
-        // Two calls the gateway actually served. The budget is checked
-        // after the spend, because the cost of a call is not knowable
-        // before it returns.
-        var gateway = new FakeModelGateway().Responds("first").Responds("second");
+        var inner = new FakeModelGateway().Responds("first").Responds("second");
 
         await using (var db = fixture.NewDb())
         {
-            var budgets = new BudgetService(db);
+            var gateway = Recording(inner, db);
             for (var attempt = 1; attempt <= 2; attempt++)
             {
-                var completion = await gateway.CompleteAsync(
-                    new ModelRequest(agent.Deployment, "system", [new ModelMessage(ModelRole.User, "go")]));
-                await budgets.RecordAsync(
-                    run, StageId.Implement, attempt, agent.TeamMemberId, completion.Deployment, completion.Usage);
+                await gateway.CompleteAsync(Call(agent, run, StageId.Implement, attempt));
             }
         }
 
         await using var verify = fixture.NewDb();
-        var state = await new BudgetService(verify).StateAsync(run.Id, agent.TeamMemberId);
+        Assert.False((await new BudgetService(verify).StateAsync(run.Id, agent.TeamMemberId)).Exceeded);
 
-        Assert.Equal(300, state.Spent);   // 150 per call from the fake
-        Assert.False(state.Exceeded);
-
-        // One more takes it over.
+        // One more takes it over. The check is after the spend, because the
+        // cost of a call is not knowable before it returns.
         await using (var db = fixture.NewDb())
         {
-            await new BudgetService(db).RecordAsync(
-                run, StageId.Implement, 3, agent.TeamMemberId, agent.Deployment, new ModelUsage(200, 100));
+            await Recording(new FakeModelGateway().RespondsWithUsage("third", new ModelUsage(200, 100)), db)
+                .CompleteAsync(Call(agent, run, StageId.Implement, 3));
         }
 
         await using var after = fixture.NewDb();
@@ -151,11 +252,11 @@ public sealed class BudgetAndSteerTests(SpecGraphTestFixture fixture)
     public async Task AMemberWithNoBudgetIsNeverExceeded()
     {
         var (run, agent) = await SeedRunAsync();
+        var inner = new FakeModelGateway().RespondsWithUsage("ok", new ModelUsage(999_999, 999_999));
 
         await using (var db = fixture.NewDb())
         {
-            await new BudgetService(db).RecordAsync(
-                run, StageId.Implement, 1, agent.TeamMemberId, agent.Deployment, new ModelUsage(999_999, 999_999));
+            await Recording(inner, db).CompleteAsync(Call(agent, run, StageId.Implement, 1));
         }
 
         await using var verify = fixture.NewDb();
@@ -173,19 +274,23 @@ public sealed class BudgetAndSteerTests(SpecGraphTestFixture fixture)
 
         await using (var db = fixture.NewDb())
         {
-            var budgets = new BudgetService(db);
-            await budgets.RecordAsync(run, StageId.Plan, 1, planner.TeamMemberId, planner.Deployment, new ModelUsage(900, 900));
-            await budgets.RecordAsync(run, StageId.Implement, 1, implementer.TeamMemberId, implementer.Deployment, new ModelUsage(100, 100));
+            await Recording(new FakeModelGateway().RespondsWithUsage("p", new ModelUsage(900, 900)), db)
+                .CompleteAsync(Call(planner, run, StageId.Plan, 1));
+        }
+        await using (var db = fixture.NewDb())
+        {
+            await Recording(new FakeModelGateway().RespondsWithUsage("i", new ModelUsage(100, 100)), db)
+                .CompleteAsync(Call(implementer, run, StageId.Implement, 1));
         }
 
         await using var verify = fixture.NewDb();
-        var budgetService = new BudgetService(verify);
+        var budgets = new BudgetService(verify);
 
         // The planner burned far more, but it has no limit of its own, and
         // its spend must not park the implementer.
-        Assert.False((await budgetService.StateAsync(run.Id, implementer.TeamMemberId)).Exceeded);
-        Assert.Equal(200, (await budgetService.StateAsync(run.Id, implementer.TeamMemberId)).Spent);
-        Assert.Equal(2000, await budgetService.TotalForRunAsync(run.Id));
+        Assert.False((await budgets.StateAsync(run.Id, implementer.TeamMemberId)).Exceeded);
+        Assert.Equal(200, (await budgets.StateAsync(run.Id, implementer.TeamMemberId)).Spent);
+        Assert.Equal(2000, await budgets.TotalForRunAsync(run.Id));
     }
 
     // ---- attach and steer -------------------------------------------------
@@ -203,8 +308,8 @@ public sealed class BudgetAndSteerTests(SpecGraphTestFixture fixture)
                 DataJson = """{"stage":"plan"}""", CreatedAt = DateTimeOffset.UtcNow,
             });
             await db.SaveChangesAsync();
-            await new BudgetService(db).RecordAsync(
-                run, StageId.Plan, 1, agent.TeamMemberId, agent.Deployment, new ModelUsage(10, 5));
+            await Recording(new FakeModelGateway().RespondsWithUsage("x", new ModelUsage(10, 5)), db)
+                .CompleteAsync(Call(agent, run, StageId.Plan, 1));
         }
 
         await using var db2 = fixture.NewDb();

@@ -37,7 +37,31 @@ internal sealed class FakeModelGateway : IModelGateway
 
     public FakeModelGateway Responds(string text)
     {
-        _responses.Enqueue(request => new ModelCompletion(text, new ModelUsage(100, 50), request.Deployment));
+        _responses.Enqueue(request => new ModelCompletion(text, new ModelUsage(100, 50), request.Deployment)
+        {
+            LatencyMs = 12,
+            Provider = "fake",
+            ModelFamily = "fake-model",
+        });
+        return this;
+    }
+
+    /// <summary>For the fact-row tests, where the usage breakdown is the thing under test.</summary>
+    public FakeModelGateway RespondsWithUsage(string text, ModelUsage usage)
+    {
+        _responses.Enqueue(request => new ModelCompletion(text, usage, request.Deployment)
+        {
+            LatencyMs = 12,
+            Provider = "fake",
+            ModelFamily = "fake-model",
+        });
+        return this;
+    }
+
+    /// <summary>Makes the inner gateway throw, so the recorder's failure path is exercised.</summary>
+    public FakeModelGateway Fails(string message)
+    {
+        _responses.Enqueue(_ => throw new ModelGatewayException(message, FailureClass.Retryable));
         return this;
     }
 
