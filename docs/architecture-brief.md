@@ -8,13 +8,16 @@ document before starting step 3.
 
 ## The main flow
 
-1. **Converse.** A user talks to an architect agent that knows the project's
-   spec graph and standards.
-2. **Approve specs.** The conversation settles into a proposed amendment; a
-   human approves it.
-3. **Execute to test.** Approved amendments run as ordered batches through
-   `plan → implement → verify`.
-4. **Deploy.** A batch that verifies clean is deployed as one unit.
+1. **Converse.** You talk to an agent that knows your specifications and is
+   maintaining them from your answers. It coordinates across the connected
+   MCP servers to pull the right standards, and it works out how the work
+   will be handed to lower agents based on those standards and specs.
+2. **Approve specs.** Settled conversation becomes a proposed amendment to
+   the spec graph. It is reviewed and approved.
+3. **Execute to test.** Approved specs are queued in ordered batches. Each
+   batch runs — plan, implement, verify — until everything in it passes
+   testing.
+4. **Deploy.** A batch that has fully passed is deployed as a unit.
 
 Everything else in this document exists to make those four steps work.
 
@@ -388,3 +391,33 @@ per run, and is the unit for release notes and rollback.
 run_id?)`, `batches.status`, `batches.deployed_at`.
 
 **Front surface:** `df.batches.create/order/execute/status/deploy`.
+
+---
+
+## Addendum — ADR-0030
+
+**ADR-0030 — Claude Code hooks are mapped mechanically to factory commands
+under the `df:` namespace.**
+A developer's Claude Code session is part of the factory whether or not the
+web UI is open. A `df-hook` CLI is installed with the project; every Claude
+Code hook entry invokes `df-hook <event>`, and `.dark-factory/hooks.json`
+maps lifecycle events to factory commands as data, per project. Default
+mapping: `SessionStart → df.context.pull` (inject spec neighborhood and
+standards summary into session context), `UserPromptSubmit → df.specs.query`
+(attach related spec nodes), `PreToolUse[Write|Edit] → df.specs.check`
+(block or warn on edits to code whose spec reference has no approved
+amendment), `PostToolUse[Bash git commit] → df.specs.reconcile` (record
+drift), `Stop`/`SessionEnd → df.sessions.record` (audit),
+`WorktreeCreate → df.projects.select`, `TaskCompleted → df.work.report`.
+Rules: hooks read a local cache and post to the factory asynchronously so
+they stay fast; only `df.specs.check` on `PreToolUse` may block, and only
+when the project's gate config enables it; every call carries the Claude
+session id as its idempotency key; hooks fire deterministically and never
+depend on the model choosing to call a tool. The hook pack, the factory MCP
+server entry, and the `df` skills ship together as a single installable
+Claude Code plugin.
+
+**Data model:** `sessions(id, project_id, claude_session_id, started_at,
+ended_at)`, `session_events(session_id, event, command, payload_ref, at)`.
+
+**Scheduling:** out of scope for step 3; scheduled after step 4.

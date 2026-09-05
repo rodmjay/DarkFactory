@@ -52,6 +52,12 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # So df.servers.register can reach a workspace server running on the
+    # developer's machine rather than in this network (docs/adr/0014): the
+    # reference server is deliberately not a Compose service, because a real
+    # customer's workspace server never will be either.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s

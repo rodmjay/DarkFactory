@@ -8,11 +8,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DarkFactory.Core\DarkFactory.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The published schema is embedded rather than copied so validation
+         uses the same bytes the repo publishes, and so a deployed image
+         needs no schema file alongside it. Linked from contracts/ because
+         that directory, not this project, is the canonical home. -->
+    <EmbeddedResource Include="..\..\contracts\schemas\describe.schema.json"
+                      LogicalName="DarkFactory.Contracts.Schemas.describe.schema.json" />
   </ItemGroup>
 
 </Project>

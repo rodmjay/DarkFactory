@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/describe.schema.json",
+  "title": "DescribeResponse",
+  "description": "The response to df.describe(), the mandatory handshake every compliant server answers. See docs/conventions/describe.md and ADR-0018. The factory validates every describe response against this schema before storing it; a server that answers but does not validate fails registration.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Human-readable server name, shown in the registry and the dashboard."
+    },
+    "convention_version": {
+      "$ref": "#/$defs/semver",
+      "description": "The convention version this server speaks. Semver. The factory supports at least two concurrently (ADR-0020) and adapts per server using this value."
+    },
+    "convention_versions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/semver" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Every convention version this server can speak, when it speaks more than one. `convention_version` is the preferred one and MUST also appear here when this is present. The factory itself answers with this populated (ADR-0020)."
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "factory",
+        "workspace",
+        "vcs",
+        "deploy",
+        "standards",
+        "qa",
+        "knowledge",
+        "observability",
+        "ticketing",
+        "agent"
+      ],
+      "description": "What kind of server this is. `factory` is reserved for Dark Factory answering its own handshake; `agent` marks an agent server (ADR-0028)."
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" },
+      "uniqueItems": true,
+      "description": "Dotted df.* tool names this server implements. Anything outside the df. root is the server's own business and is not listed here (ADR-0018)."
+    },
+    "requires": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" },
+      "uniqueItems": true,
+      "description": "Capabilities this server needs from elsewhere in order to function. Same dotted df.* form as `capabilities`."
+    },
+    "effective_config": {
+      "type": "object",
+      "description": "What this instance is actually pointed at — repo, branch, environment, subscription. MUST NOT contain secrets: it is stored in the registry and rendered in the dashboard.",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "name",
+    "convention_version",
+    "domain",
+    "capabilities",
+    "requires",
+    "effective_config"
+  ],
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "description": "Semantic version, per semver.org."
+    },
+    "capability": {
+      "type": "string",
+      "pattern": "^df\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+      "description": "A dotted capability name rooted at df., e.g. `df.describe`, `df.files.read_many`, `df.vcs.open_pr`."
+    }
+  }
+}

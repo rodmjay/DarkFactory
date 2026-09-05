@@ -23,6 +23,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DarkFactory.Core\DarkFactory.Core.csproj" />
     <ProjectReference Include="..\..\src\DarkFactory.Data\DarkFactory.Data.csproj" />
+    <!-- For McpServerProbe: the reference-server test registers over
+         a real MCP connection, not through the fake. -->
+    <ProjectReference Include="..\..\src\DarkFactory.Client\DarkFactory.Client.csproj" />
   </ItemGroup>
 
 </Project>

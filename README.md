@@ -13,9 +13,16 @@ leased claiming, a transactional outbox, an artifact store, and a retry
 policy, all driving the six-stage pipeline with its two v1 gates — proven by
 an integration test that kills a real worker process mid-stage and resumes
 it in a second, independent process from durable state alone (see
-`tests/DarkFactory.Engine.Tests/CrashResumeTests.cs`). The front MCP surface
-(`projects.*`, `work.*`) and the reference workspace server are next — see
-each area's code comments for what's real versus stubbed.
+`tests/DarkFactory.Engine.Tests/CrashResumeTests.cs`).
+
+On top of that sit the **spec graph** — content-addressed, append-only, with
+immutability enforced by database grant rather than convention
+([ADR-0016](docs/adr/0016-spec-graph-content-addressed-append-only.md)) —
+and the **`df.describe` handshake and server registry**
+([ADR-0018](docs/adr/0018-df-namespace-and-describe-handshake.md),
+[docs/conventions/describe.md](docs/conventions/describe.md)). The
+conversation (`df.conversations.*`) is next — see each area's code comments
+for what's real versus stubbed.
 
 ## 1. `docker compose up`
 
@@ -56,7 +63,30 @@ show `healthy` for each once they're up. `factory`/`worker` expose
 Postgres connectivity); `dashboard` exposes `GET /api/health`.
 
 The reference workspace server (`reference/workspace-mcp`) is **not** a
-Compose service — see step 2.
+Compose service — see step 2. That is deliberate: a real customer's
+workspace server never will be either. `factory` gets a
+`host.docker.internal` mapping so `df.servers.register` can reach one
+running on your machine.
+
+### Registering a server
+
+```bash
+# in one terminal: the reference workspace server, pointed at any repo
+cd reference/workspace-mcp && npm install && npm run build
+node dist/index.js --http 8931 --root /path/to/some/repo
+
+# then register it with the factory
+#   df.servers.register(url: "http://host.docker.internal:8931/mcp")
+```
+
+Registration calls `df.describe`, validates the answer against
+[`contracts/schemas/describe.schema.json`](contracts/schemas/describe.schema.json),
+stores the manifest-versus-live disagreement, and runs a conformance check
+that records **one row per declared capability**. A server that cannot
+answer the handshake is not registered at all; one that answers wrongly is
+rejected with the schema violations in the message; one that claims a
+capability it does not have is marked `degraded` and stays usable for
+everything that works.
 
 ## 2. From another repo
 
@@ -76,12 +106,16 @@ Then, from a host that speaks MCP (e.g. Claude Code):
 claude mcp add --transport http dark-factory http://localhost:5100/mcp
 ```
 
-and, once the front MCP surface (`projects.*`, `work.*`) exists:
+and register that workspace server with the factory:
 
 ```
-projects.register("http://host.docker.internal:5200/mcp")
-work.submit(project_id, "…")
+df.servers.register("http://host.docker.internal:5200/mcp")
 ```
+
+Then, once the conversation surface exists (`df.conversations.*`,
+`df.specs.*`, `df.work.create`), a run is seeded from approved spec
+amendments rather than from raw text — see
+[the architecture brief](docs/architecture-brief.md).
 
 `host.docker.internal` is how the `factory` container (inside Docker) reaches
 the workspace server (running directly on your host) — see
@@ -107,19 +141,22 @@ approved from the dashboard along the way — see
 ## Repository layout
 
 ```
-docs/adr/                     ADR-0001..0014 — every foundational decision, why, and its consequences
-docs/conventions/              Workspace (v0.1, implemented), Theme/Plugin (v0.1, mostly TODO), the call envelope
-contracts/schemas/             JSON Schema for Envelope, HookResult, Spec, Plan, ChangeSet, TestReport
+docs/architecture-brief.md     The v2 brief — supersedes the original setup prompt
+docs/adr/                     ADR-0001..0030 — every foundational decision, why, and its consequences
+docs/conventions/              df.describe (v0.2), Workspace (v0.2, implemented), Theme/Plugin (v0.1, mostly TODO), the call envelope
+contracts/schemas/             JSON Schema for DescribeResponse, Envelope, HookResult, Spec, Plan, ChangeSet, TestReport
 src/DarkFactory.Mcp/           ASP.NET Core host: MCP server, SignalR hub, outbox publisher, webhook ingress, health
 src/DarkFactory.Core/          Domain: Project, WorkItem, Run, Stage, Artifact, Gate, Event, AuditEntry, PipelineStages
 src/DarkFactory.Engine/        RunStateMachine (checkpoint + outbox + lease release, one transaction), GateService,
                                 retry policy, default stage handlers, EngineWorker (claim/poll loop)
 src/DarkFactory.Data/          EF Core DbContext (queries only), plain-.sql MigrationRunner, SchemaGuard,
-                                RunLeaseStore (leased claiming), ArtifactStore, OutboxDrain
+                                RunLeaseStore (leased claiming), ArtifactStore, OutboxDrain,
+                                SpecGraphService (content addressing, snapshots, diff),
+                                ServerRegistry + ConformanceChecker + ManifestLiveDiff, AppRole
 src/DarkFactory.Data/Migrations/ Hand-written, versioned .sql — the schema's source of truth (no EF Migrations)
 src/DarkFactory.Migrate/       One-shot console app: applies pending Migrations/*.sql; the only thing that migrates
 src/DarkFactory.Contracts/     C# types matching contracts/schemas
-src/DarkFactory.Client/        MCP client wrapper: envelope, deadlines, failure classification
+src/DarkFactory.Client/        MCP client wrapper: envelope, deadlines, failure classification, McpServerProbe
 dashboard/                     Next.js dashboard
 reference/workspace-mcp/       TypeScript reference implementation of the Workspace convention
 tests/DarkFactory.Engine.Tests/ Lease/outbox/retry/happy-path tests + CrashResumeTests (real process kill + resume)

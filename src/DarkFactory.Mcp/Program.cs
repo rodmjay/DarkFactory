@@ -1,4 +1,9 @@
+using System.Text.Json;
+using DarkFactory.Client;
+using DarkFactory.Contracts;
+using DarkFactory.Core;
 using DarkFactory.Data;
+using DarkFactory.Mcp;
 using DarkFactory.Mcp.Endpoints;
 using DarkFactory.Mcp.Hubs;
 using OpenTelemetry.Resources;
@@ -40,7 +45,30 @@ builder.Services.AddSignalR();
 builder.Services.AddScoped<DarkFactory.Data.IRunEventBroadcaster, SignalRRunEventBroadcaster>();
 builder.Services.AddHostedService<OutboxPublisherHostedService>();
 
+// The handshake and registry (docs/adr/0018, docs/conventions/describe.md).
+// The probe is a singleton because it holds no per-request state; it opens
+// a fresh connection per call by design (see McpServerProbe).
+builder.Services.AddSingleton<IServerProbe>(sp =>
+    new McpServerProbe(sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<FactoryDescribe>();
+builder.Services.AddScoped<ServerRegistry>();
+
 var app = builder.Build();
+
+// The factory validates other servers' handshakes against the published
+// schema, so it validates its own the same way, at startup, and refuses to
+// start if it fails. A factory serving an invalid df.describe while
+// rejecting servers for exactly that is not a contract, it's a double
+// standard — and this catches it in one second rather than in a customer's
+// registration attempt.
+var factoryDescribe = app.Services.GetRequiredService<FactoryDescribe>().Build();
+var selfCheck = DescribeSchema.Validate(JsonSerializer.Serialize(factoryDescribe));
+if (!selfCheck.IsValid)
+{
+    throw new InvalidOperationException(
+        "The factory's own df.describe response does not validate against " +
+        $"contracts/schemas/describe.schema.json: {selfCheck.Summarize()}");
+}
 
 // Refuse to start against a schema this build doesn't understand (see
 // SchemaGuard.cs and docs/adr/0008). Migrations run only from the

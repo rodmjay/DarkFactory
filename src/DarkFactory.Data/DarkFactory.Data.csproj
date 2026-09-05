@@ -15,6 +15,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DarkFactory.Core\DarkFactory.Core.csproj" />
+    <!-- For the published df.describe schema and its validator
+         (DescribeSchema): the registry validates before it stores. -->
+    <ProjectReference Include="..\DarkFactory.Contracts\DarkFactory.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

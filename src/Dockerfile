@@ -20,6 +20,10 @@ RUN dotnet restore src/DarkFactory.Migrate/DarkFactory.Migrate.csproj \
  && dotnet restore src/DarkFactory.Engine/DarkFactory.Engine.csproj
 
 COPY src/ src/
+# DarkFactory.Contracts embeds contracts/schemas/describe.schema.json as a
+# linked resource, so the published schemas are part of the compile, not
+# just documentation sitting beside it (see DescribeSchema.cs).
+COPY contracts/ contracts/
 RUN dotnet publish src/DarkFactory.Migrate/DarkFactory.Migrate.csproj -c Release -o /app/migrate --no-restore \
  && dotnet publish src/DarkFactory.Mcp/DarkFactory.Mcp.csproj -c Release -o /app/mcp --no-restore \
  && dotnet publish src/DarkFactory.Engine/DarkFactory.Engine.csproj -c Release -o /app/engine --no-restore

@@ -7,5 +7,7 @@ dashboard
 reference
 tests
 docs
-contracts
+# contracts/ is NOT excluded: DarkFactory.Contracts embeds
+# contracts/schemas/describe.schema.json as a linked resource, so the image
+# cannot be built without it (src/Dockerfile, DescribeSchema.cs).
 *.md

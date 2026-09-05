@@ -32,6 +32,7 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
     // docs/adr/0018 (servers) and docs/adr/0023 (standards index) — schema
     // only in this slice; df.servers.register and indexing are step 3b+.
     public DbSet<Server> Servers => Set<Server>();
+    public DbSet<ConformanceResult> ConformanceResults => Set<ConformanceResult>();
     public DbSet<StandardsIndexEntry> StandardsIndex => Set<StandardsIndexEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -240,6 +241,19 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
             e.Property(s => s.Tier).HasConversion<string>().HasMaxLength(16);
             e.Property(s => s.Status).HasConversion<string>().HasMaxLength(16);
             e.HasIndex(s => s.OrgId);
+            // docs/conventions/describe.md: registration is idempotent by
+            // (org_id, url). The unique index is what makes that true even
+            // if two registrations race — the second one conflicts rather
+            // than quietly producing a duplicate server.
+            e.HasIndex(s => new { s.OrgId, s.Url }).IsUnique();
+        });
+
+        modelBuilder.Entity<ConformanceResult>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Status).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(c => new { c.ServerId, c.ConformanceRunId });
+            e.HasOne<Server>().WithMany().HasForeignKey(c => c.ServerId);
         });
 
         modelBuilder.Entity<StandardsIndexEntry>(e =>

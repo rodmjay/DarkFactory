@@ -17,8 +17,24 @@ function resolveWithinRoot(root: string, path: string): string {
   return resolved;
 }
 
+// Directories nobody means when they ask for "**/*", and which would bury
+// a real answer in noise if included.
+const ALWAYS_IGNORED = ["**/.git/**", "**/node_modules/**"];
+
 export async function listFiles(root: string, globs: string[]): Promise<string[]> {
-  return fg(globs, { cwd: root, dot: false, onlyFiles: true, followSymbolicLinks: false });
+  // dot: true. A workspace server that cannot see .github/workflows,
+  // .env.example or .dark-factory/ when explicitly asked for them is not
+  // much use for maintaining a repository — those are exactly the files a
+  // build stage needs to reason about. The noise that `dot: false` was
+  // really guarding against is .git and node_modules, which are excluded
+  // by name instead.
+  return fg(globs, {
+    cwd: root,
+    dot: true,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+    ignore: ALWAYS_IGNORED,
+  });
 }
 
 export async function readManyFiles(root: string, paths: string[]) {

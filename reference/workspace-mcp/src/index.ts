@@ -5,7 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { describeWorkspace } from "./describe.js";
+import { describeServer } from "./describe.js";
 import { echoEnvelope, envelopeSchema } from "./envelope.js";
 import { listFiles, readManyFiles, searchFiles, writeManyFiles } from "./files.js";
 import { runCommand } from "./exec.js";
@@ -31,16 +31,20 @@ function json(value: unknown) {
 }
 
 function buildServer(root: string): McpServer {
-  const server = new McpServer({ name: "dark-factory-workspace-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "dark-factory-workspace-mcp", version: "0.2.0" });
 
+  // The mandatory handshake (ADR-0018, docs/conventions/describe.md).
+  // Unlike every other tool here it does NOT echo the envelope back: the
+  // published schema is closed, and an extra property would fail
+  // registration against the factory.
   server.registerTool(
-    "workspace.describe",
-    { description: "Identity and capability info for this workspace.", inputSchema: { envelope: envelopeSchema } },
-    async ({ envelope }) => json({ ...echoEnvelope(envelope), ...describeWorkspace(root) }),
+    "df.describe",
+    { description: "The Dark Factory handshake: convention version, capabilities, domain, requires and effective config.", inputSchema: { envelope: envelopeSchema } },
+    async () => json(describeServer(root)),
   );
 
   server.registerTool(
-    "files.list",
+    "df.files.list",
     {
       description: "List files matching one or more globs.",
       inputSchema: { globs: z.array(z.string()), envelope: envelopeSchema },
@@ -49,7 +53,7 @@ function buildServer(root: string): McpServer {
   );
 
   server.registerTool(
-    "files.read_many",
+    "df.files.read_many",
     {
       description: "Read the contents of multiple files in one call.",
       inputSchema: { paths: z.array(z.string()), envelope: envelopeSchema },
@@ -59,7 +63,7 @@ function buildServer(root: string): McpServer {
   );
 
   server.registerTool(
-    "files.search",
+    "df.files.search",
     {
       description: "Search file contents for a query string.",
       inputSchema: { query: z.string(), globs: z.array(z.string()).optional(), envelope: envelopeSchema },
@@ -69,7 +73,7 @@ function buildServer(root: string): McpServer {
   );
 
   server.registerTool(
-    "files.write_many",
+    "df.files.write_many",
     {
       description: "Write multiple files in one call.",
       inputSchema: {
@@ -82,7 +86,7 @@ function buildServer(root: string): McpServer {
   );
 
   server.registerTool(
-    "exec.run",
+    "df.exec.run",
     {
       description: "Run a shell command in the workspace.",
       inputSchema: {
@@ -97,13 +101,13 @@ function buildServer(root: string): McpServer {
   );
 
   server.registerTool(
-    "vcs.branch",
+    "df.vcs.branch",
     { description: "Create or switch to a branch.", inputSchema: { name: z.string(), envelope: envelopeSchema } },
     async ({ name, envelope }) => json({ ...echoEnvelope(envelope), ...branch(root, name) }),
   );
 
   server.registerTool(
-    "vcs.apply_patch",
+    "df.vcs.apply_patch",
     {
       description: "Apply a patch by artifact reference.",
       inputSchema: { patch_ref: z.string(), envelope: envelopeSchema },
@@ -112,19 +116,19 @@ function buildServer(root: string): McpServer {
   );
 
   server.registerTool(
-    "vcs.commit",
+    "df.vcs.commit",
     { description: "Commit staged changes.", inputSchema: { message: z.string(), envelope: envelopeSchema } },
     async ({ message, envelope }) => json({ ...echoEnvelope(envelope), ...commit(root, message) }),
   );
 
   server.registerTool(
-    "vcs.push",
+    "df.vcs.push",
     { description: "Push the current branch.", inputSchema: { envelope: envelopeSchema } },
     async ({ envelope }) => json({ ...echoEnvelope(envelope), ...push(root) }),
   );
 
   server.registerTool(
-    "vcs.open_pr",
+    "df.vcs.open_pr",
     {
       description: "Open a pull request for the current branch.",
       inputSchema: { title: z.string(), body: z.string(), envelope: envelopeSchema },

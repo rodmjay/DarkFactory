@@ -13,8 +13,8 @@
     },
     "stage_id": {
       "type": "string",
-      "enum": ["intake", "spec", "plan", "implement", "verify", "ship"],
-      "description": "The pipeline stage currently executing."
+      "enum": ["intake", "spec", "plan", "implement", "verify", "ship", "conformance"],
+      "description": "The pipeline stage currently executing. `conformance` is not a pipeline stage: it marks a call made outside any run, by df.servers.register's conformance check (docs/conventions/describe.md). Every outbound call carries an envelope with a deadline, including that one, so the value has to exist rather than the envelope being omitted. `intake` and `spec` are retained while the engine still runs them; ADR-0003's amendment removes them from runs in step 3c."
     },
     "project_id": {
       "type": "string",

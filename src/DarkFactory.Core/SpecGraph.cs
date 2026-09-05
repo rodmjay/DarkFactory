@@ -169,22 +169,96 @@ public sealed class Provenance
 
 public enum ServerTier { BuiltIn, Premium, Community }
 
-public enum ServerStatus { Registered, Conformant, Failed }
+/// <summary>
+/// <c>Degraded</c> is the ADR-0018 flag: the server answered and works for
+/// some of what it claims, but its manifest and its live describe disagree,
+/// or a conformance probe failed. A server that claims a capability it does
+/// not have is degraded, not rejected — it stays usable for everything that
+/// did pass, and the dashboard shows what didn't.
+/// </summary>
+public enum ServerStatus { Registered, Conformant, Degraded, Failed }
 
-/// <summary>docs/adr/0018 and docs/adr/0019. Registration (df.servers.register) lands in step 3b.</summary>
+/// <summary>docs/adr/0018 and docs/adr/0019.</summary>
 public sealed class Server
 {
     public required string Id { get; init; }
     public required string OrgId { get; init; }
     public string? ProjectId { get; init; }
-    public required string Name { get; init; }
-    public required ServerTier Tier { get; init; }
-    public required string Domain { get; init; }
-    public required string ConventionVersion { get; init; }
-    public required string ManifestJson { get; init; }
+
+    /// <summary>
+    /// The MCP endpoint. Together with <see cref="OrgId"/> this is the
+    /// registry's natural key: re-registering the same URL for the same org
+    /// updates the existing row rather than creating a second one.
+    /// </summary>
+    public required string Url { get; init; }
+
+    public required string Name { get; set; }
+    public required ServerTier Tier { get; set; }
+    public required string Domain { get; set; }
+    public required string ConventionVersion { get; set; }
+
+    /// <summary>The static manifest this server was listed with (docs/adr/0018).</summary>
+    public required string ManifestJson { get; set; }
+
+    /// <summary>The last validated <c>df.describe()</c> response.</summary>
     public string? LiveDescribeJson { get; set; }
+
+    /// <summary>
+    /// The stored disagreement between <see cref="ManifestJson"/> and
+    /// <see cref="LiveDescribeJson"/>, or null when they agree. Persisted
+    /// rather than recomputed on read: what the dashboard shows must be
+    /// what registration actually observed, not a fresh comparison against
+    /// a describe response that may have changed since.
+    /// </summary>
+    public string? ManifestDiffJson { get; set; }
+
     public required ServerStatus Status { get; set; }
+    public required DateTimeOffset RegisteredAt { get; init; }
     public DateTimeOffset? LastConformanceAt { get; set; }
+
+    /// <summary>
+    /// Removal is a retirement, not a delete. A server's conformance
+    /// history is an audit record — that this server once failed
+    /// <c>df.exec.run</c> stays true after someone removes it, and hard
+    /// deletion would either erase that or orphan it. Removed servers are
+    /// excluded from <c>df.servers.list</c>; re-registering the same
+    /// (org_id, url) revives the row rather than creating a second one.
+    /// </summary>
+    public DateTimeOffset? RemovedAt { get; set; }
+}
+
+public enum ConformanceStatus
+{
+    Passed,
+    Failed,
+
+    /// <summary>
+    /// Declared by the server, but this slice ships no probe for it. Not a
+    /// failure — an honest statement that the factory did not check, which
+    /// is a different thing from "checked and fine".
+    /// </summary>
+    NotProbed,
+}
+
+/// <summary>
+/// One row per declared capability per conformance pass — deliberately not
+/// a single boolean on the server. "Conformance failed" tells a user
+/// nothing; "df.exec.run failed, everything else passed" tells them what to
+/// fix, and is what the dashboard renders.
+/// </summary>
+public sealed class ConformanceResult
+{
+    public required string Id { get; init; }
+    public required string ServerId { get; init; }
+
+    /// <summary>Groups every row written by a single conformance pass, so history is readable.</summary>
+    public required string ConformanceRunId { get; init; }
+
+    public required string Capability { get; init; }
+    public required ConformanceStatus Status { get; init; }
+    public string? Detail { get; init; }
+    public required long DurationMs { get; init; }
+    public required DateTimeOffset CheckedAt { get; init; }
 }
 
 /// <summary>
