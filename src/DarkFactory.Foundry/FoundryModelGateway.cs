@@ -166,7 +166,10 @@ public sealed class FoundryModelGateway : IModelGateway
             });
         }
 
-        var options = new ChatCompletionOptions { MaxOutputTokenCount = request.MaxOutputTokens };
+        var options = new ChatCompletionOptions
+        {
+            MaxOutputTokenCount = _options.ResolveMaxOutputTokens(deployment, request.MaxOutputTokens),
+        };
         if (request.Temperature is { } temperature)
         {
             options.Temperature = (float)temperature;
@@ -198,7 +201,7 @@ public sealed class FoundryModelGateway : IModelGateway
         var options = new ChatCompletionsOptions
         {
             Model = deployment,
-            MaxTokens = request.MaxOutputTokens,
+            MaxTokens = _options.ResolveMaxOutputTokens(deployment, request.MaxOutputTokens),
         };
 
         options.Messages.Add(new ChatRequestSystemMessage(SystemPromptOf(request)));

@@ -1,7 +1,7 @@
    stage_id   | attempt | deployment  | provider  |  model_family   | input_tokens_uncached | input_tokens_cached | cache_write_tokens | output_tokens | thinking_tokens | latency_ms | artifact_valid_first_try | retried | stage_result 
 --------------+---------+-------------+-----------+-----------------+-----------------------+---------------------+--------------------+---------------+-----------------+------------+--------------------------+---------+--------------
- conversation |       1 | architect   | anthropic | claude-opus-5   |                    85 |                   0 |               2605 |           647 |               0 |      10719 |                          |         | 
- Plan         |       1 | planner     | anthropic | claude-opus-5   |                   518 |                   0 |                  0 |           571 |               0 |       7428 | t                        |         | 
- Implement    |       1 | implementer | anthropic | claude-sonnet-5 |                   679 |                   0 |                  0 |          4617 |               0 |      31780 | t                        |         | 
+ conversation |       1 | architect   | anthropic | claude-opus-5   |                    85 |                   0 |               2605 |           701 |               0 |      11047 |                          |         | 
+ Plan         |       1 | planner     | anthropic | claude-opus-5   |                   510 |                   0 |                  0 |           622 |               0 |       8110 | t                        |         | 
+ Implement    |       1 | implementer | anthropic | claude-sonnet-5 |                   671 |                   0 |                  0 |         15208 |               0 |     133248 | t                        |         | 
 (3 rows)
 

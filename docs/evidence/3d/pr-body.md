@@ -1,20 +1,20 @@
 ## What this implements
 
-- `01M1SBDTK1GZFHT7DPX1XZ8S09` — A GET request to /health/detailed returns a response that reports whether the service can currently reach its database.
+- `01M1SCBR6RPXC3A1VK8K810ZE6` — GET /health/detailed responds with the current reachability of the service's database connection.
 
 ## Provenance
 
-- Snapshot: `01M1SBDTN7QH3393XQQKA5K5RD`
-- Run: `01M1SBDTPBW9187541T4DR7JW6`
-- Amendments: `01M1SBDTGN5KH1A7XPQPHV5FFG`
+- Snapshot: `01M1SCBR8ZCK5346WGW2C2VE26`
+- Run: `01M1SCBRA1ZC2TFTMCY1DGXV7V`
+- Amendments: `01M1SCBR4C1DV27DC1R8AHEBA0`
 
 ## Files changed
 
-- `src/Health/Models/DetailedHealthResponse.cs`
-- `src/Health/Services/IDatabaseHealthCheckService.cs`
-- `src/Health/Services/DatabaseHealthCheckService.cs`
-- `src/Health/Controllers/HealthController.cs`
-- `src/Health/HealthServiceCollectionExtensions.cs`
+- `HealthService.csproj`
+- `Data/AppDbContext.cs`
+- `HealthChecks/DatabaseConnectionHealthCheck.cs`
+- `HealthChecks/DetailedHealthReportWriter.cs`
+- `Program.cs`
 
 ## Verification
 

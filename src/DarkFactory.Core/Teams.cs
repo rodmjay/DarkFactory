@@ -91,8 +91,15 @@ public sealed class TeamMember
     /// router classifies in a sentence, while an implementer returns whole
     /// files and will silently truncate mid-JSON if held to a chat-sized
     /// limit — which costs a full retry and reads as "invalid response"
-    /// rather than as the configuration mistake it is. Null takes the
-    /// gateway's default.
+    /// rather than as the configuration mistake it is.
+    ///
+    /// Null asks the gateway for the model's own maximum, which is the
+    /// normal case: this layer is deliberately ignorant of which model a
+    /// deployment resolves to (docs/adr/0027), so it cannot name a ceiling
+    /// without reaching across that boundary. A number is a deliberate
+    /// override and still wins — which is what keeps a Foundry-served
+    /// member configurable, since a Foundry deployment name says nothing
+    /// about the model behind it and the gateway has nothing to look up.
     /// </summary>
     public int? MaxOutputTokens { get; set; }
 

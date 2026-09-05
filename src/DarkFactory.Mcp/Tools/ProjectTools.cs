@@ -47,7 +47,8 @@ public static class ProjectTools
     {
         var members = await teams.ListAsync(project_id, cancellationToken);
         return members
-            .Select(m => new TeamMemberSummary(m.Role, m.Deployment, m.FallbackDeployment, m.TokenBudget))
+            .Select(m => new TeamMemberSummary(
+                m.Role, m.Deployment, m.FallbackDeployment, m.TokenBudget, m.MaxOutputTokens))
             .ToList();
     }
 
@@ -79,7 +80,9 @@ public sealed record ProjectSummary(
         new(r.Project.Id, r.Project.Name, r.Project.WorkspaceMcpUrl, r.Project.StackHints, r.Team.Id);
 }
 
-public sealed record TeamMemberSummary(string Role, string Deployment, string? Fallback, int? TokenBudget);
+/// <param name="MaxOutputTokens">Null means the model's maximum (docs/adr/0027); a number is a deliberate override.</param>
+public sealed record TeamMemberSummary(
+    string Role, string Deployment, string? Fallback, int? TokenBudget, int? MaxOutputTokens);
 
 public sealed record RunSummary(
     string Id, string ProjectId, string Stage, string Status, string? SnapshotId, string[] AmendmentIds);

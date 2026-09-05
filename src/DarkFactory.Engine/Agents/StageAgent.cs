@@ -62,7 +62,7 @@ public sealed class StageAgent(
                 built.Agent.Deployment,
                 systemPrompt(built.Pack),
                 messages,
-                MaxOutputTokens: built.Agent.MaxOutputTokens ?? DefaultMaxOutputTokens,
+                MaxOutputTokens: built.Agent.MaxOutputTokens,
                 Context: CallContext(context, built, stage, attempt: 1, promptTemplateVersion),
                 CacheableSystemPrefix: cacheablePrefix(built.Pack)),
             cancellationToken);
@@ -99,7 +99,7 @@ public sealed class StageAgent(
                 retryBuilt.Agent.Deployment,
                 systemPrompt(retryBuilt.Pack),
                 retryMessages,
-                MaxOutputTokens: retryBuilt.Agent.MaxOutputTokens ?? DefaultMaxOutputTokens,
+                MaxOutputTokens: retryBuilt.Agent.MaxOutputTokens,
                 Context: CallContext(context, retryBuilt, stage, attempt: 2, promptTemplateVersion, retried: true),
                 CacheableSystemPrefix: cacheablePrefix(retryBuilt.Pack)),
             cancellationToken);
@@ -117,9 +117,6 @@ public sealed class StageAgent(
         await RecordOutcomeAsync(retry.ModelCallId, validFirstTry: false, cancellationToken);
         return new AgentTurn<T>(retryValue, retryBuilt.Ref, retry.ModelCallId, ValidFirstTry: false);
     }
-
-    /// <summary>Used when a member declares no limit of its own.</summary>
-    public const int DefaultMaxOutputTokens = 8192;
 
     /// <summary>
     /// Names truncation for what it is.

@@ -1,0 +1,24 @@
+# BuildKit reads this instead of the root .dockerignore when building with
+# `dockerfile: dashboard/Dockerfile`. The root one excludes ./dashboard —
+# correct for the .NET image, fatal here — so the web image needs its own.
+#
+# Keep: package.json, pnpm-workspace.yaml, pnpm-lock.yaml, packages/, dashboard/.
+
+.git
+**/node_modules
+**/.next
+**/bin
+**/obj
+
+# The .NET side of the repository. None of it reaches the web image.
+src
+tests
+reference
+contracts
+docs
+*.sln
+docker-compose*.yml
+
+# Local state and secrets.
+.env
+**/*.log

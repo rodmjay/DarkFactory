@@ -63,6 +63,39 @@ public sealed class AnthropicModelGateway : IModelGateway
             "production targets Foundry (docs/adr/0027).", _options.BaseUrl);
     }
 
+    /// <summary>
+    /// Models this gateway has already warned about, so an unrecognised one
+    /// is reported once rather than on every call.
+    /// </summary>
+    private readonly HashSet<string> _warnedUnknownModels = new(StringComparer.Ordinal);
+
+    private int ResolveMaxTokens(string model, int? requested)
+    {
+        var resolved = _options.ResolveMaxOutputTokens(model, requested, out var known);
+
+        // Silence here is how truncation comes back. A model the build does
+        // not recognise falls to a chat-sized ceiling, and an implementer on
+        // it would start being cut off mid-answer again — recoverable, but
+        // only if someone knows to look.
+        if (!known && requested is null)
+        {
+            lock (_warnedUnknownModels)
+            {
+                if (_warnedUnknownModels.Add(model))
+                {
+                    _logger.LogWarning(
+                        "No output ceiling is known for model '{Model}', so calls to it are capped at " +
+                        "{Fallback} tokens — long answers will be truncated. Set " +
+                        "{Section}:MaxOutputTokens:{Model} to the model's real max_tokens " +
+                        "(GET /v1/models/{Model}).",
+                        model, resolved, AnthropicOptions.SectionName, model, model);
+                }
+            }
+        }
+
+        return resolved;
+    }
+
     public async Task<ModelCompletion> CompleteAsync(
         ModelRequest request, CancellationToken cancellationToken = default)
     {
@@ -72,7 +105,7 @@ public sealed class AnthropicModelGateway : IModelGateway
         var payload = new MessagesRequest
         {
             Model = model,
-            MaxTokens = request.MaxOutputTokens,
+            MaxTokens = ResolveMaxTokens(model, request.MaxOutputTokens),
             System = BuildSystem(request),
             Temperature = request.Temperature,
             Messages = request.Messages

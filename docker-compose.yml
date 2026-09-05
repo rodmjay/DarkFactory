@@ -133,7 +133,12 @@ services:
 
   dashboard:
     build:
-      context: ./dashboard
+      # The repository root, because @dark-factory/ui is a pnpm workspace
+      # package outside ./dashboard and the image needs the workspace
+      # manifest and lockfile to resolve it (ADR-0033). Exclusions come from
+      # dashboard/Dockerfile.dockerignore, not the root .dockerignore.
+      context: .
+      dockerfile: dashboard/Dockerfile
     ports:
       - "${DASHBOARD_PORT:-3000}:3000"
     environment:

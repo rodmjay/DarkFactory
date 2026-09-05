@@ -121,6 +121,10 @@ public sealed class ConversationService(
                 agent.Deployment,
                 ArchitectPrompt.SystemPrompt(pack),
                 messages,
+                // The architect emits a whole spec_diff and was on the same
+                // chat-sized cap the implementer truncated against; null
+                // takes the model's ceiling, a member override still wins.
+                MaxOutputTokens: agent.MaxOutputTokens,
                 Context: CallContext(conversation, agent, packRef, attempt: 1),
                 CacheableSystemPrefix: ArchitectPrompt.CacheablePrefix(pack)),
             cancellationToken);
@@ -149,6 +153,7 @@ public sealed class ConversationService(
                     agent.Deployment,
                     ArchitectPrompt.SystemPrompt(retryPack),
                     retryMessages,
+                    MaxOutputTokens: agent.MaxOutputTokens,
                     Context: CallContext(conversation, agent, packRef, attempt: 2, retried: true),
                     CacheableSystemPrefix: ArchitectPrompt.CacheablePrefix(retryPack)),
                 cancellationToken);

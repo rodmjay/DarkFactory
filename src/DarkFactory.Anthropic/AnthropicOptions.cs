@@ -22,7 +22,16 @@ public sealed class AnthropicOptions
     /// </summary>
     public string ApiVersion { get; set; } = "2023-06-01";
 
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(5);
+    /// <summary>
+    /// Generous, because a member with no override now generates up to the
+    /// model's ceiling and this client does not stream.
+    /// <para>Streaming is the real fix for very long generations and is
+    /// deliberately not implemented here — see docs/adr/0027. At 128k
+    /// output tokens a non-streaming request can outlive any timeout worth
+    /// setting; this bound is honest about what the current client can wait
+    /// for, not a claim that it is enough for every possible response.</para>
+    /// </summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(15);
 
     /// <summary>
     /// Role name → model id. The same indirection Foundry deployments give
@@ -49,6 +58,82 @@ public sealed class AnthropicOptions
             [AgentRoles.Implementer] = "claude-sonnet-5",
             [AgentRoles.Router] = "claude-haiku-4-5-20251001",
         };
+
+    /// <summary>
+    /// Model id → its maximum output tokens, overridable from configuration
+    /// for a model this build predates.
+    ///
+    /// It lives here because the gateway is the only layer that knows which
+    /// model a deployment resolves to (docs/adr/0027): a team member naming
+    /// a token count would be naming a fact about a model it is
+    /// deliberately kept ignorant of.
+    /// </summary>
+    public Dictionary<string, int> MaxOutputTokens { get; set; } = [];
+
+    /// <summary>
+    /// The API's own numbers, from <c>GET /v1/models/{id}</c>
+    /// (<c>max_tokens</c>), pinned at authoring time rather than fetched.
+    ///
+    /// Pinned deliberately. A lookup per call is a latency and cost
+    /// regression, and a lookup that can fail makes truncation — the exact
+    /// fault this whole change exists to remove — come back intermittently
+    /// and dependent on someone else's uptime. A wrong number here is a
+    /// visible, fixable constant; a flaky one is a ghost.
+    /// </summary>
+    public static IReadOnlyDictionary<string, int> DefaultMaxOutputTokens { get; } =
+        new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["claude-opus-5"] = 128_000,
+            ["claude-sonnet-5"] = 128_000,
+            ["claude-haiku-4-5-20251001"] = 64_000,
+        };
+
+    /// <summary>
+    /// Conservative ceiling for a model this build has never heard of.
+    ///
+    /// Every current model exceeds this, so the cost of not knowing is a
+    /// response that could have been longer — recoverable, and now named as
+    /// truncation rather than as malformed output. Assuming the maximum
+    /// instead would fail the whole call with a 400 on any model whose real
+    /// ceiling is lower, which is the worse direction to be wrong in.
+    /// <para>Falling back here is worth a warning, not silence: it is how
+    /// an implementer on a newly-configured model would quietly return to
+    /// truncating.</para>
+    /// </summary>
+    public const int UnknownModelMaxOutputTokens = 8192;
+
+    /// <summary>
+    /// The ceiling to send: the caller's explicit override when there is
+    /// one, otherwise the model's own maximum.
+    ///
+    /// An override above the model's ceiling is clamped rather than
+    /// rejected — it means "as much as possible", and failing the call over
+    /// it would help nobody. <paramref name="known"/> reports whether the
+    /// model was recognised, so the caller can say so once.
+    /// </summary>
+    public int ResolveMaxOutputTokens(string model, int? requested, out bool known)
+    {
+        known = true;
+        int ceiling;
+        if (MaxOutputTokens.TryGetValue(model, out var configured) && configured > 0)
+        {
+            ceiling = configured;
+        }
+        else if (DefaultMaxOutputTokens.TryGetValue(model, out var builtIn))
+        {
+            ceiling = builtIn;
+        }
+        else
+        {
+            known = false;
+            ceiling = UnknownModelMaxOutputTokens;
+        }
+
+        return requested is { } limit && limit > 0 ? Math.Min(limit, ceiling) : ceiling;
+    }
+
+    public int ResolveMaxOutputTokens(string model, int? requested) =>
+        ResolveMaxOutputTokens(model, requested, out _);
 
     /// <summary>
     /// Resolves a role to a model id: explicit configuration first, then the

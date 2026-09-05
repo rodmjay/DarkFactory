@@ -43,10 +43,12 @@ public sealed class TeamService(DarkFactoryDbContext db)
             ["df.specs.query", "df.specs.get", "df.specs.neighborhood", "df.specs.propose"]),
         new(AgentRoles.Planner, AssignmentPoints.Plan,
             ["df.specs.get", "df.files.list", "df.files.read_many"]),
-        // Whole files, so a chat-sized output limit truncates it mid-JSON.
+        // Returns whole files, so a chat-sized output limit truncates it
+        // mid-JSON. It carries no number here: null asks the gateway for
+        // the model's own maximum, which is both larger and not a fact this
+        // layer is entitled to know (docs/adr/0027).
         new(AgentRoles.Implementer, AssignmentPoints.Implement,
-            ["df.files.read_many", "df.files.write_many", "df.exec.run"],
-            MaxOutputTokens: ImplementerMaxOutputTokens),
+            ["df.files.read_many", "df.files.write_many", "df.exec.run"]),
         // Verification is checkable by a test, so it does not need the
         // strongest model — but it does need to be able to run one.
         new(AgentRoles.Reviewer, AssignmentPoints.Verify,
@@ -54,16 +56,16 @@ public sealed class TeamService(DarkFactoryDbContext db)
         new(AgentRoles.Router, AssignmentPoints.Triage, []),
     ];
 
+    /// <summary>
+    /// <paramref name="MaxOutputTokens"/> is null on every built-in member:
+    /// null asks the gateway for the model's ceiling, and the template
+    /// cannot name a number without knowing which model the deployment
+    /// resolves to, which it deliberately does not (docs/adr/0027). The
+    /// field exists so a template — or an operator — can still restrict a
+    /// member, and so a Foundry-served member has a way to raise one.
+    /// </summary>
     public sealed record TeamTemplateMember(
         string Role, string Point, IReadOnlyList<string> Capabilities, int? MaxOutputTokens = null);
-
-    /// <summary>
-    /// What an implementer needs to return whole files without being cut
-    /// off mid-answer. Held as a named constant rather than a literal in
-    /// the template because the failure it prevents — truncation that
-    /// presents as a malformed response — is not obvious from the number.
-    /// </summary>
-    public const int ImplementerMaxOutputTokens = 32_000;
 
     /// <summary>
     /// Seeds the default team. Called at project registration so a project

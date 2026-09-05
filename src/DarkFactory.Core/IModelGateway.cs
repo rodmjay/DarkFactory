@@ -42,11 +42,36 @@ public sealed record ModelMessage(ModelRole Role, string Content);
 /// never told about, and an agent trusted to record its own usage is an
 /// agent that can forget to — so the context travels with the request.
 /// </param>
+/// <param name="MaxOutputTokens">
+/// A ceiling on the response, or <c>null</c> to let the gateway apply the
+/// model's own maximum.
+/// <para>Null is the normal case, and it is not "some safe default": only
+/// the gateway knows which model a deployment resolves to (docs/adr/0027),
+/// so only the gateway can answer "how much can this model emit". A number
+/// here is a deliberate override — a hard latency bound, or a member whose
+/// answers should be short.</para>
+/// <para>This was a hardcoded 8192 until the 3d acceptance demo truncated
+/// the implementer's first attempt mid-JSON and paid for the retry. One
+/// constant cannot be right for both a router emitting a route and an
+/// implementer emitting whole files.</para>
+/// <para><b>It is not a cost control.</b> <c>max_tokens</c> is a ceiling,
+/// not a reservation, so raising it costs nothing by itself — but see
+/// docs/adr/0027 on what that leaves bounding a single runaway call.</para>
+/// <para><b>Do not give this a non-null default.</b> It was <c>= 8192</c>,
+/// and a default that is a real value cannot express "unspecified": the
+/// gateway could not tell "the caller did not say" from "the caller wants
+/// exactly 8192", so the decision had to be made by every caller and then
+/// depended on all of them agreeing. They did not — the conversation path
+/// was still passing nothing long after the stage path had been fixed, and
+/// it read as fixed because the number was plausible. Null pushes the
+/// resolution into the one place that knows the model, and a caller that
+/// forgets now gets the model's ceiling rather than a chat-sized cap.</para>
+/// </param>
 public sealed record ModelRequest(
     string Deployment,
     string SystemPrompt,
     IReadOnlyList<ModelMessage> Messages,
-    int MaxOutputTokens = 8192,
+    int? MaxOutputTokens = null,
     double? Temperature = null,
     ModelCallContext? Context = null,
     string? CacheableSystemPrefix = null);

@@ -65,6 +65,42 @@ public sealed class FoundryOptions
     /// </summary>
     public Dictionary<string, string> Deployments { get; set; } = [];
 
+    /// <summary>
+    /// Deployment name → maximum output tokens, for operators who want a
+    /// ceiling on a deployment.
+    ///
+    /// Unlike the Anthropic gateway there is no built-in table, and there
+    /// cannot honestly be one: a Foundry deployment name says nothing about
+    /// the model behind it — that is the whole point of the indirection
+    /// (docs/adr/0027) — so the factory would be guessing. Unmapped and
+    /// unrestricted means no <c>max_tokens</c> is sent at all and the
+    /// provider applies the deployment's own default, which is the right
+    /// answer to "how much can this model produce" when only Foundry knows.
+    /// <para>This is why <c>team_members.max_output_tokens</c> stays an
+    /// override rather than being replaced by the lookup: on Foundry it is
+    /// the only way to raise a member's ceiling.</para>
+    /// </summary>
+    public Dictionary<string, int> MaxOutputTokens { get; set; } = [];
+
+    /// <summary>
+    /// The ceiling to send, or null to send none. A member's explicit
+    /// override wins; otherwise a configured per-deployment ceiling;
+    /// otherwise nothing.
+    /// </summary>
+    public int? ResolveMaxOutputTokens(string deployment, int? requested)
+    {
+        if (requested is { } limit && limit > 0)
+        {
+            return MaxOutputTokens.TryGetValue(deployment, out var ceiling) && ceiling > 0
+                ? Math.Min(limit, ceiling)
+                : limit;
+        }
+
+        return MaxOutputTokens.TryGetValue(deployment, out var configured) && configured > 0
+            ? configured
+            : null;
+    }
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Endpoint);
 
     public string ResolveDeployment(string role) =>
