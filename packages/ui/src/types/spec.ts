@@ -73,12 +73,26 @@ export interface SpecDiffDocument {
 /**
  * A conflict the factory detected between this diff and the existing graph.
  *
- * **Proposed.** `specdiff.schema.json` carries no conflict list — today a
- * conflict is expressed as an `edge_add` of kind `conflicts_with`, which
- * says two nodes disagree but not what the disagreement is or when the
- * other decision was made. Rendering "this contradicts the rule you set in
- * March" needs the sentence and the date, so the component takes them; if
- * the shape is adopted it belongs in the schema.
+ * **Proposed — but mostly a projection over data that already exists.**
+ *
+ * A conflict is expressed today as an `edge_add` of kind `conflicts_with`,
+ * and rendering "this contradicts the rule you set in March" needs the
+ * sentence and the date that a bare edge does not carry. Both are closer to
+ * hand than that makes it sound:
+ *
+ * - The sentence is **already collected and then discarded.**
+ *   `specdiff.schema.json` has `rationale` on every `edge_add`, so the model
+ *   is asked why and answers, and the answer is stored in the amendment's
+ *   diff JSON — then dropped when the edge is applied, because `SpecEdge`
+ *   has no field for it (`SpecGraphService.ApplyAsync` builds the edge and
+ *   never reads `edgeAdd.Rationale`). Carrying it onto the edge is a column
+ *   and a line, not a design.
+ * - The date is recoverable: the contradicted node's revision has a
+ *   provenance row with `at` and `approved_by`. It is simply not joined
+ *   anywhere.
+ *
+ * So the ask is "stop discarding what we collect, and join what we store",
+ * not "model something new".
  */
 export interface SpecConflict {
   /** The existing node this diff contradicts. */

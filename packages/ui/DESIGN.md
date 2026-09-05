@@ -468,6 +468,31 @@ lines the hunk skipped, and a reader will quote them. Removed lines get no
 number, because they have none in the new file. Spec annotations are keyed by
 file line so they survive re-rendering with more context.
 
+### The two proposed shapes, and what they actually cost
+
+Both were needed to render something the components already have to show,
+and neither is as large as "propose a schema" sounds.
+
+**`conflicts` on a spec diff is mostly a projection over data that exists.**
+A conflict is an `edge_add` of kind `conflicts_with` today, and rendering
+"this contradicts the rule you set in March" needs a sentence and a date that
+a bare edge does not carry. But `specdiff.schema.json` already has
+`rationale` on every `edge_add` — the model is asked why and answers, and the
+answer is stored in the amendment's diff JSON, then **dropped when the edge
+is applied**: `SpecGraphService.ApplyAsync` builds the `SpecEdge` and never
+reads `edgeAdd.Rationale`, because `SpecEdge` has nowhere to put it. The date
+is recoverable too, from the contradicted node's revision provenance (`at`,
+`approved_by`); it is simply not joined anywhere. So the ask is *stop
+discarding what we already collect, and join what we already store* — a
+column and a line, not a design. (Found by the step-3 session reading the
+persistence path against this proposal; recorded here because "this is being
+dropped" is a much easier argument to act on than "this needs designing".)
+
+**`stage_timeline` is a join nobody owns.** `stages`, `artifacts` and
+`model_calls` all exist and none of them knows about the others. The join is
+the thing worth rendering — who did the stage, what came out of it, what it
+cost — and it has no schema because no single table is its home.
+
 **Markdown is a splitter, not an engine.** It handles paragraphs,
 blockquotes, lists, and inline `**bold**` / `*italic*` / `` `code` `` — and
 emits React elements, so there is no path by which model-authored text
