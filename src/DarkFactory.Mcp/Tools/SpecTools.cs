@@ -38,8 +38,8 @@ public static class SpecTools
     }
 
     [McpServerTool(Name = "df.specs.get"),
-     Description("Get one specification node, at its latest revision or a specific one.")]
-    public static async Task<SpecNodeSummary> Get(
+     Description("Get one specification node with its revision history — each revision's text, why it was made, and by whom.")]
+    public static async Task<SpecNodeDetail> Get(
         SpecGraphService specs,
         [Description("The node's stable spec id.")] string spec_id,
         [Description("A specific revision hash. Omit for the latest.")] string? revision = null,
@@ -52,7 +52,13 @@ public static class SpecTools
             ? await specs.GetLatestRevisionAsync(spec_id, cancellationToken)
             : await specs.GetRevisionAsync(spec_id, revision, cancellationToken);
 
-        return SpecNodeSummary.From(node, wanted);
+        // The history, not just the current text. "Why does this say what it
+        // says" is rarely answered by the latest revision alone — the
+        // interesting answer is usually in the one that changed it
+        // (docs/adr/0016, as amended).
+        var history = await specs.RevisionHistoryAsync(spec_id, cancellationToken);
+
+        return new SpecNodeDetail(SpecNodeSummary.From(node, wanted), history);
     }
 
     [McpServerTool(Name = "df.specs.neighborhood"),
@@ -137,6 +143,9 @@ public sealed record SpecNodeSummary(
         node.SpecId, node.Kind, node.Layer, revision?.Hash, revision?.CanonicalText, node.RetiredAt is not null);
 }
 
+/// <param name="Revisions">Oldest first, so a node reads as a history rather than a snapshot.</param>
+public sealed record SpecNodeDetail(SpecNodeSummary Node, IReadOnlyList<SpecRevisionSummary> Revisions);
+
 public sealed record EdgeSummary(string EdgeId, string FromSpecId, string ToSpecId, string Kind, bool Retired)
 {
     public static EdgeSummary From(SpecEdge edge) =>
@@ -154,21 +163,36 @@ public sealed record AmendmentSummary(string Id, string ProjectId, string Status
         var internalDiff = JsonSerializer.Deserialize<SpecDiff>(amendment.DiffJson);
         var document = internalDiff is null ? null : new SpecDiffDocument
         {
+            // Rationale round-trips: what the proposer said about each
+            // change comes back on the element it was said about
+            // (docs/adr/0016, as amended). It was being dropped here, so an
+            // approver read "creates 1" with no answer to "why".
             Creates = internalDiff.Creates
-                .Select(c => new SpecDiffCreate { Kind = c.Kind, Layer = c.Layer, Text = c.CanonicalText })
+                .Select(c => new SpecDiffCreate
+                {
+                    Kind = c.Kind, Layer = c.Layer, Text = c.CanonicalText,
+                    Rationale = c.Rationale ?? SpecDiffTranslator.RationaleOf(c.ContentJson),
+                })
                 .ToList(),
             Revises = internalDiff.Revises
-                .Select(r => new SpecDiffRevise { SpecId = r.SpecId, Text = r.CanonicalText })
+                .Select(r => new SpecDiffRevise
+                {
+                    SpecId = r.SpecId, Text = r.CanonicalText,
+                    Rationale = r.Rationale ?? SpecDiffTranslator.RationaleOf(r.ContentJson),
+                })
                 .ToList(),
-            Retires = internalDiff.Retires.Select(r => new SpecDiffRetire { SpecId = r.SpecId }).ToList(),
+            Retires = internalDiff.Retires
+                .Select(r => new SpecDiffRetire { SpecId = r.SpecId, Rationale = r.Rationale })
+                .ToList(),
             EdgeAdds = internalDiff.EdgeAdds
                 .Select(e => new SpecDiffEdgeAddDocument
                 {
                     FromSpecId = e.FromSpecId, ToSpecId = e.ToSpecId, Kind = e.Kind,
+                    Rationale = e.Rationale,
                 })
                 .ToList(),
             EdgeRetires = internalDiff.EdgeRetires
-                .Select(e => new SpecDiffEdgeRetireDocument { EdgeId = e.EdgeId })
+                .Select(e => new SpecDiffEdgeRetireDocument { EdgeId = e.EdgeId, Rationale = e.Rationale })
                 .ToList(),
         };
 

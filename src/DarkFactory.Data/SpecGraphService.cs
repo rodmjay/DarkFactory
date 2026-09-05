@@ -6,6 +6,24 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DarkFactory.Data;
 
+/// <summary>
+/// One revision of a node with the answer to "why" attached — the reason
+/// given at the time, and who gave it (docs/adr/0016, as amended).
+///
+/// The reason lives per revision rather than per node because that is where
+/// it is true: a node revised three times has three reasons, and the useful
+/// one is almost never the latest.
+/// </summary>
+public sealed record SpecRevisionSummary(
+    string Hash,
+    string Text,
+    string? Rationale,
+    DateTimeOffset CreatedAt,
+    string ActorId,
+    string? ApprovedBy,
+    string? ConversationId,
+    string? TurnId);
+
 public sealed record SnapshotDiffResult(
     IReadOnlyList<string> CreatedSpecIds,
     IReadOnlyList<string> RevisedSpecIds,
@@ -210,6 +228,43 @@ public sealed class SpecGraphService(DarkFactoryDbContext db)
             .Where(r => r.SpecId == specId)
             .OrderByDescending(r => r.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
+
+    /// <summary>
+    /// Every revision of a node, oldest first, each with its own reason and
+    /// provenance. This is what makes an amendment's "why" recoverable long
+    /// after the conversation that produced it has scrolled away.
+    /// </summary>
+    public async Task<IReadOnlyList<SpecRevisionSummary>> RevisionHistoryAsync(
+        string specId, CancellationToken cancellationToken = default)
+    {
+        var rows = await (
+            from revision in db.SpecRevisions.AsNoTracking()
+            join provenance in db.Provenance.AsNoTracking()
+                on revision.ProvenanceId equals provenance.Id
+            where revision.SpecId == specId
+            orderby revision.CreatedAt
+            select new
+            {
+                revision.Hash,
+                revision.CanonicalText,
+                revision.ContentJson,
+                revision.CreatedAt,
+                provenance.ActorId,
+                provenance.ApprovedBy,
+                provenance.ConversationId,
+                provenance.TurnId,
+            }).ToListAsync(cancellationToken);
+
+        return rows.Select(r => new SpecRevisionSummary(
+            r.Hash,
+            r.CanonicalText,
+            SpecDiffTranslator.RationaleOf(r.ContentJson),
+            r.CreatedAt,
+            r.ActorId,
+            r.ApprovedBy,
+            r.ConversationId,
+            r.TurnId)).ToList();
+    }
 
     public Task<SpecRevision?> GetRevisionAsync(string specId, string hash, CancellationToken cancellationToken = default) =>
         db.SpecRevisions.AsNoTracking().SingleOrDefaultAsync(r => r.SpecId == specId && r.Hash == hash, cancellationToken);
