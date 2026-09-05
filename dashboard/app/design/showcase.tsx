@@ -4,6 +4,7 @@ import * as React from "react";
 import { cn } from "@dark-factory/ui";
 
 import { BaseComponents } from "./sections/base";
+import { DomainComponents } from "./sections/domain";
 import { Foundations } from "./sections/foundations";
 import { Semantics } from "./sections/semantics";
 
@@ -13,6 +14,7 @@ const NAV = [
   ["foundations", "Foundations"],
   ["semantics", "Semantic colour"],
   ["base", "Base components"],
+  ["domain", "Domain components"],
 ] as const;
 
 function Content() {
@@ -21,6 +23,7 @@ function Content() {
       <Foundations />
       <Semantics />
       <BaseComponents />
+      <DomainComponents />
     </div>
   );
 }

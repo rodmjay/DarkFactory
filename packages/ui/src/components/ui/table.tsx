@@ -58,13 +58,24 @@ export function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   );
 }
 
-export function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+/**
+ * `numeric` right-aligns and switches on tabular figures. It exists so the
+ * alignment and the figures cannot drift apart: a right-aligned column of
+ * proportional digits still jitters, and Instrument Sans' digit advances
+ * vary by 31%, so the two decisions are really one.
+ */
+export function TableHead({
+  className,
+  numeric,
+  ...props
+}: React.ComponentProps<"th"> & { numeric?: boolean }) {
   return (
     <th
       data-slot="table-head"
       className={cn(
-        "h-8 px-3 text-left align-middle text-2xs font-medium tracking-wide text-muted uppercase",
+        "h-8 px-3 align-middle text-2xs font-medium tracking-wide text-muted uppercase",
         "whitespace-nowrap",
+        numeric ? "text-right" : "text-left",
         className,
       )}
       {...props}
@@ -72,11 +83,15 @@ export function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   );
 }
 
-export function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+export function TableCell({
+  className,
+  numeric,
+  ...props
+}: React.ComponentProps<"td"> & { numeric?: boolean }) {
   return (
     <td
       data-slot="table-cell"
-      className={cn("px-3 py-2 align-middle", className)}
+      className={cn("px-3 py-2 align-middle", numeric && "tnum text-right", className)}
       {...props}
     />
   );

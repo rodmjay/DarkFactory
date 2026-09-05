@@ -16,3 +16,7 @@ npm-debug.log*
 .vscode/
 .idea/
 .DS_Store
+
+# Playwright
+test-results/
+playwright-report/

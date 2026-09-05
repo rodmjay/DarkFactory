@@ -7,7 +7,12 @@
     "dev": "pnpm --filter dashboard dev",
     "build": "pnpm --filter dashboard build",
     "lint": "pnpm -r lint",
-    "check:contrast": "pnpm --filter @dark-factory/ui check:contrast"
+    "typecheck": "pnpm -r typecheck",
+    "check:contrast": "pnpm --filter @dark-factory/ui check:contrast",
+    "check:tokens": "node packages/ui/scripts/check-tokens-only.mjs",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots",
+    "check": "pnpm check:tokens && pnpm check:contrast && pnpm lint && pnpm typecheck"
   },
   "packageManager": "pnpm@10.33.2",
   "engines": {

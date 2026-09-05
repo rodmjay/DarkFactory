@@ -6,11 +6,10 @@ to Claude Design for prototyping. Everything visual lives in this package;
 
 Decisions recorded in [ADR-0033](../../docs/adr/0033-design-system.md).
 
-**Status:** step 1 of 3 is complete — tokens, themes, typography, the shadcn
-base set, the showcase route, and this document. The domain components
-(`StageTimeline`, `SpecDiff`, `PayloadRenderer`, …) are step 2 and are
-specified at the end of this file so the shape they will take is reviewable
-now.
+**Status:** steps 1 and 2 are complete — tokens, themes, typography, the
+shadcn base set, the sixteen domain components, the showcase, the visual
+regression suite, the tokens-only check, and this document. Step 3 is the
+export bundle for Claude Design.
 
 ---
 
@@ -328,7 +327,9 @@ Every component below renders in every listed state on the showcase at
 | `Avatar` | `AvatarImage` · `AvatarFallback` | image, fallback, several sizes |
 | `Label` | native props | with each control |
 
-### Domain primitives (shipped in step 1)
+### Domain primitives
+
+The three smallest ones. The other sixteen are in § 8.
 
 | Component | Props | States |
 |---|---|---|
@@ -385,31 +386,185 @@ import { Button, StatusChip, LayerBadge, cn } from "@dark-factory/ui";
 
 ---
 
-## 8. Still to come (step 2)
+## 8. Domain components
 
-Domain components, each in every listed state on the showcase. Typed against
-`contracts/schemas/` where a shape exists (`spec_diff` today); where it does
-not, the TypeScript type is defined in `src/types` and **proposed as a
-schema** here, per ADR-0021's rule that the vocabulary grows deliberately.
+What the product is made of. Every one renders in every listed state on the
+showcase; if a state is not there, it is not in the system.
 
-| Component | Renders | Schema |
-|---|---|---|
-| `StageTimeline` | plan → implement → verify → ship for one run, with owning member, artifact chip, cost; a parked stage shows the agent's question inline | proposed: `stage_timeline` |
-| `SpecNodeCard` | one small-grained node: id, layer badge, text, edge counts | from `spec.schema.json` + ADR-0016 |
-| `SpecDiff` | created / revised / retired nodes, edge changes, conflicts | `specdiff.schema.json` (exists) |
-| `ApprovalCard` | summary, required approvers, approve/reject with reason | proposed: `approval_card` |
-| `AmendmentRow` | backlog item, draggable into a batch | ADR-0029 |
-| `BatchCard` | ordered runs, overall status, deploy control | ADR-0029 |
-| `TeamMemberCard` | portrait, role, model family, speed preset, skills, budget, spend | ADR-0028 |
-| `PersonaCard` | marketplace variant with price and author | ADR-0028 (deferred persona note) |
-| `ServerCard` | name, domain, convention version, capabilities, effective config | `describe.schema.json` (exists) |
-| `MetricTile` | one number with label, delta, sparkline | proposed: `metric` |
-| `CostBar` | stacked cost by stage or member | ADR-0032 `model_calls` |
-| `CodeDiff` | unified diff with spec-id gutter annotations | proposed: `code_diff` |
-| `DependencyGraph` | small SVG graph, force-free layout | proposed: `dependency_graph` |
-| `PayloadRenderer` | maps an ADR-0021 payload to the above | ADR-0021 |
-| `SyncStatus` | synced / syncing / offline / conflict | ADR-0031 |
-| `ProvenancePopover` | conversation, turn, proposer, approver, skill revisions, model | ADR-0016 provenance |
+Typed against `contracts/schemas/` where a schema exists — today that is
+`specdiff.schema.json` and `describe.schema.json` — and against types in
+`packages/ui/src/types` where one does not. Those are marked **proposed**
+below and in the source, so writing the schema stays a deliberate act
+(ADR-0021's rule that the vocabulary grows on purpose) rather than a
+transcription of whatever the first component happened to need.
 
-Also in step 2: the Playwright screenshot test capturing the showcase in both
-themes, and the tokens-only lint rule as a second net behind the compiler.
+| Component | Props of note | States shown | Shape |
+|---|---|---|---|
+| `StageTimeline` | `run_id`, `snapshot_id`, `stages: StageTimelineEntry[]`, `onAnswer` | running, parked, failed, over-budget, completed — every status token appears | proposed `stage_timeline` |
+| `SpecNodeCard` | `node: SpecNode`, `selected` | default, selected, retired, drifted | ADR-0016 + ADR-0024 |
+| `SpecDiff` | `diff: SpecDiffDocument`, `conflicts`, `summary` | with conflicts, without, empty | `specdiff.schema.json`; `conflicts` proposed |
+| `ApprovalCard` | `approval: Approval`, `canDecide`, `onApprove`, `onReject` | awaiting, approved, rejected, waiting-on-others | proposed `approval_card` |
+| `AmendmentRow` | `amendment: Amendment`, `inBatch`, `seq` | default, in-batch, blocked-by-dependency | ADR-0029 |
+| `BatchCard` | `batch: Batch`, `onDeploy` | composing, running, blocked-by-verify, deployable, deployed | ADR-0029 |
+| `TeamMemberCard` | `member: TeamMember` | native agent, agent server, persona (priced), over-budget | ADR-0028 |
+| `PersonaCard` | `persona`, **`modelFamily` (required)**, `speed`, `role`, `onInstall` | free, priced, installed | ADR-0028 (deferred) |
+| `ServerCard` | `server: Server`, `onAuthorize` | conformant, degraded, unreachable, built-in-connector | `describe.schema.json` |
+| `MetricTile` | `label`, `value`, `unit`, `delta`, `delta_is_good`, `series`, `period` | up, down, flat, no-data | proposed `metric` |
+| `CostBar` | `segments: CostSegment[]`, `budget`, `compact` | default, over-budget segment | ADR-0032 `model_calls` |
+| `CodeDiff` | `patch`, `specAnnotations`, `filesChanged` | default with spec gutter, with conflict marker | proposed `code_diff` |
+| `DependencyGraph` | `nodes`, `edges`, `focus`, `onSelect` | a focused neighbourhood | proposed `dependency_graph` |
+| `PayloadRenderer` | `payloads: Payload[]` | one example per payload type, a reply with three, an unknown type | ADR-0021 |
+| `SyncStatus` | `state: SyncState`, `pending`, `compact` | synced, syncing, offline, conflict | ADR-0031 |
+| `ProvenancePopover` | `provenance: Provenance`, `children`, `defaultOpen` | on a spec node and on a cost figure | ADR-0016 |
+
+### Decisions worth stating
+
+**Conflicts come first in a `SpecDiff`, and are the loudest thing the system
+draws.** A reader scanning for what is new will scroll past a conflict placed
+below the additions. "This contradicts the rule you set in March" is the one
+thing a spec graph knows that a person does not, and burying it wastes the
+product's whole argument.
+
+**A parked stage opens with the agent's question inline.** The alternative —
+a badge you click to find out what it wants — makes the one state that
+requires a person the one that costs an extra step. A run parked overnight
+because nobody expanded the row is the failure this exists to prevent.
+
+**Deploy lives on `BatchCard` and nowhere on a run.** Deploy is a batch
+action (ADR-0029): a run that verifies clean is *deployable*, not deployed.
+The button's placement is the ADR made visible; on a run it would mean the
+schema was lying about what a release is.
+
+**Rejection requires a reason; approval does not.** A rejection that says
+only "no" sends the proposer back to guess, and the reason is the entire
+content of the decision. Approval needs none because the diff already says
+what was agreed to.
+
+**`PersonaCard` requires `modelFamily` as a prop.** ADR-0028 makes stating
+the underlying model a requirement rather than a courtesy — two personas on
+one model may differ only by speed preset, and a price with no model is
+unreadable. Making it required means a card cannot be built without it.
+
+**`offline` and `unreachable` are neutral, not warnings.** Local-first
+(ADR-0031) makes working offline a supported mode, and a server the factory
+cannot reach is usually a network fact. Colouring either as a fault spends
+the same signal that `conflict` and `parked`, which genuinely need a person,
+have to use — and trains people to ignore it.
+
+**`DependencyGraph` is force-free.** A force simulation re-lays-out on every
+render, so the same neighbourhood looks different each time and nothing about
+the picture is memorable. Focus in the centre, neighbours on a stable ring,
+same data always the same picture. Real graph layout is later work.
+
+**`PayloadRenderer` has no escape hatch.** No raw-HTML payload, no `custom`
+type. The moment one exists every plugin uses it and the vocabulary stops
+meaning anything. An unknown type renders as a named gap rather than as
+nothing — a payload silently dropped is indistinguishable from an agent that
+said nothing.
+
+**`CodeDiff` line numbers come from the hunk headers.** Counting rendered
+rows produces numbers that look authoritative and are wrong by however many
+lines the hunk skipped, and a reader will quote them. Removed lines get no
+number, because they have none in the new file. Spec annotations are keyed by
+file line so they survive re-rendering with more context.
+
+**Markdown is a splitter, not an engine.** It handles paragraphs,
+blockquotes, lists, and inline `**bold**` / `*italic*` / `` `code` `` — and
+emits React elements, so there is no path by which model-authored text
+becomes markup. Anything structural has a typed payload: a response that
+wants a table sends a `table`.
+
+---
+
+## 9. Wire shapes
+
+Two things about the ADR-0021 payload wire were found while typing these
+components, and both were fixed at the source rather than worked around here.
+Recorded because the vocabulary has seven more types to grow into, and
+whoever writes those schemas should see the decisions rather than inherit
+them.
+
+**One discriminator, named `type`.** Payloads briefly carried two — `$type`
+from System.Text.Json's polymorphism and `type` from ADR-0021 — agreeing only
+because both derived from the same closed set. Nothing enforced it; a derived
+type registered with a mismatched property would have made them disagree
+silently, and the failure would have surfaced in whichever renderer read the
+other key. The serializer's discriminator is now named `type`, so it is one
+field the serializer enforces. `PayloadRenderer` switches on it.
+
+**snake_case throughout, envelope included.** The envelope was camelCase
+(`turnId`, `amendmentId`, `tokensUsed`) while schema-backed bodies were
+snake_case, so a client destructuring one object needed two conventions with
+an invisible boundary between them. All eight schemas in
+`contracts/schemas/` are snake_case, so the envelope was not one of two
+defensible choices — it was the only thing in the repo not following the
+published one, and it got there by inheriting the SDK's default handling of
+C# records rather than by anyone deciding. The envelope moved; the
+schema-backed shapes did not.
+
+The general rule, for the next seven: **the published contract wins.** Where
+a shape has a schema, the schema's names are the wire's names, and explicit
+`[JsonPropertyName]` keeps them fixed against any serializer policy.
+
+---
+
+## 10. Enforcement
+
+Four gates, three of which have been shown to fail on purpose. A check that
+has never failed is not a check.
+
+| Command | What it does |
+|---|---|
+| `pnpm check:tokens` | Fails on any raw colour in `packages/ui/src`, `dashboard/app`, `dashboard/lib` |
+| `pnpm check:contrast` | 162 token pairs against WCAG AA in both themes |
+| `pnpm test:visual` | The showcase, captured per section and full-page, in both themes |
+| `pnpm check` | tokens, contrast, lint, typecheck — everything but the visual suite |
+
+**Tokens-only** (`packages/ui/scripts/check-tokens-only.mjs`) is the second
+net behind the compiler. `--color-*: initial` already makes `bg-gray-800`
+produce no CSS, but a class that compiles to nothing is *invisible*, not
+loud: the build stays green and the element renders transparent, which reads
+as a layout bug rather than a policy violation. The script also catches hex,
+`rgb()` and `hsl()` literals, which never went through Tailwind at all so the
+palette reset has no opinion about them. It skips comments — this document's
+own rule names `bg-gray-800` more than once, and a checker that cannot read
+its own explanation is a checker people disable. Verified against a planted
+violation of each of the four kinds.
+
+**The visual suite** captures each section separately as well as the full
+page, so a diff points at what changed rather than at a 20,000-pixel image.
+Two things about it are deliberate:
+
+- *An absolute pixel budget, not a ratio.* A ratio scales tolerance with the
+  image, so a tall section absorbs changes a short one would catch. This is
+  not hypothetical: at `maxDiffPixelRatio: 0.002` an accent hue change failed
+  three captures and slipped past the 22,000-pixel domain section entirely.
+  `maxDiffPixels: 200` catches it, and repeated runs on unchanged code differ
+  by zero.
+- *Production build, not dev.* Dev-mode rendering differs enough to make a
+  baseline captured in one useless against the other, so the config builds
+  and serves the standalone output.
+
+The suite also asserts no console or page errors. That earned its place
+immediately: it caught a React hydration mismatch (#418) from `at()`
+formatting timestamps with `toLocaleString`, whose output depends on the
+runtime timezone — so the server and the browser disagreed and React
+discarded the server's markup. Timestamps are now formatted in UTC
+explicitly, which also makes the screenshots reproducible on a machine in
+another zone. Showing a viewer's local time is a per-viewer preference and
+belongs in the app, applied after hydration — not in a formatter the server
+also calls.
+
+Note what none of these cover: anything that only happens at boot. The
+factory side learned this the hard way — 189 green tests and a host that
+would not start — and `scripts/check-stack.sh` is the answer there. The
+design system's equivalent is that the visual suite runs a real production
+build and serves it, rather than rendering components in isolation.
+
+---
+
+## 11. Still to come (step 3)
+
+The export for Claude Design: `DESIGN.md`, `tokens.css`, and a
+`design-system.json` listing components, props and states, plus the two
+showcase screenshots, under `packages/ui/export/`.

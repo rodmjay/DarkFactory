@@ -8,6 +8,15 @@
 export { cn } from "./lib/cn";
 export { FOCUS_RING, FOCUS_RING_INSET, DISABLED } from "./lib/styles";
 export * from "./lib/vocabulary";
+export * as format from "./lib/format";
+
+// ---- types: the wire shapes, and the ones proposed for schemas ----
+export type * from "./types/spec";
+export type * from "./types/run";
+export type * from "./types/payload";
+export { SPEC_KINDS, EDGE_KINDS } from "./types/spec";
+export { RUN_STAGES, BATCH_STATUSES, SPEED_PRESETS, SERVER_TIERS, SYNC_STATES } from "./types/run";
+export { PAYLOAD_TYPES } from "./types/payload";
 
 // ---- shadcn base set, restyled onto the tokens ----
 export * from "./components/ui/avatar";
@@ -33,6 +42,22 @@ export * from "./components/ui/toast";
 export * from "./components/ui/tooltip";
 
 // ---- domain ----
+export * from "./components/domain/amendment-row";
+export * from "./components/domain/approval-card";
+export * from "./components/domain/batch-card";
+export * from "./components/domain/code-diff";
+export * from "./components/domain/cost-bar";
+export * from "./components/domain/dependency-graph";
 export * from "./components/domain/layer-badge";
+export * from "./components/domain/metric-tile";
+export * from "./components/domain/payload-renderer";
+export * from "./components/domain/persona-card";
+export * from "./components/domain/provenance-popover";
+export * from "./components/domain/server-card";
+export * from "./components/domain/spec-diff";
 export * from "./components/domain/spec-id";
+export * from "./components/domain/spec-node-card";
+export * from "./components/domain/stage-timeline";
 export * from "./components/domain/status-chip";
+export * from "./components/domain/sync-status";
+export * from "./components/domain/team-member-card";
