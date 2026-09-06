@@ -10,7 +10,7 @@ then, mid-turn:
 
 ## Commit hash
 
-`<filled by the commit that follows>` — branch `screens-step4`.
+`5e244b1` — branch `screens-step4`. This report is the commit that follows it.
 
 ## What changed
 
