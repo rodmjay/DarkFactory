@@ -18,6 +18,19 @@ const nextConfig: NextConfig = {
   /* Without this, tracing starts at ./dashboard and stops short of
    * packages/ui, which is outside it. Points at the workspace root. */
   outputFileTracingRoot: path.resolve(process.cwd(), ".."),
+
+  /* `/` sends the reader to step 1 of the four-step flow.
+   *
+   * A routing-layer redirect rather than a page that calls `redirect()`.
+   * A redirecting *page* is still a rendered React route: Next emits a
+   * 307 whose body is an error stub referencing that route's own CSS
+   * chunk — a chunk which, because the page renders nothing, was never
+   * emitted. Anything that reads the body instead of following the
+   * redirect then asks for a stylesheet that 500s. This has no body at
+   * all, which is what a redirect should be. */
+  async redirects() {
+    return [{ source: "/", destination: "/conversation", permanent: false }];
+  },
 };
 
 export default nextConfig;

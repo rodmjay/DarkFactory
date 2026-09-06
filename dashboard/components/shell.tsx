@@ -17,7 +17,14 @@ import { Check, Moon, RefreshCw, Sun, WifiOff } from "lucide-react";
 
 import { cn, StatusChip, type StageStatus } from "@dark-factory/ui";
 
-import { LocalDbProvider, useQuery, useScenario, useScreen } from "@/lib/local/store";
+import {
+  LocalDbProvider,
+  WIRED_SCREENS,
+  useLive,
+  useQuery,
+  useScenario,
+  useScreen,
+} from "@/lib/local/store";
 import { SCENARIOS_FOR, SCENARIO_LABEL, type Scenario } from "@/lib/local/fixtures";
 import type { ScreenName } from "@/lib/local/schema";
 
@@ -143,6 +150,7 @@ function Header() {
       </nav>
 
       <div className="ml-auto flex items-center gap-2.5">
+        <DataSource />
         <SyncBadge />
         <ThemeToggle />
         <span className="inline-flex size-[26px] items-center justify-center rounded-pill border border-border bg-sunken text-[10px] font-semibold text-secondary">
@@ -150,6 +158,50 @@ function Header() {
         </span>
       </div>
     </header>
+  );
+}
+
+/**
+ * Where this screen's rows came from.
+ *
+ * Half the product reads the factory and half still reads fixtures, and a
+ * reviewer cannot tell which by looking at a populated table. Saying it in
+ * the header is cheaper than being asked, and the chip disappears screen by
+ * screen as each one is wired.
+ */
+function DataSource() {
+  const screen = useScreen();
+  const { live } = useLive();
+
+  if (!WIRED_SCREENS.includes(screen)) {
+    return (
+      <span
+        title="This screen still renders fixtures. It has not been wired to the factory yet."
+        className="rounded-pill border border-border bg-sunken px-2 py-0.5 text-[11px] font-medium text-muted whitespace-nowrap"
+      >
+        Prototype data
+      </span>
+    );
+  }
+
+  if (live.status === "unreachable") {
+    return (
+      <span
+        title={live.error}
+        className="rounded-pill border border-status-failed-border bg-status-failed-fill px-2 py-0.5 text-[11px] font-medium text-status-failed-text whitespace-nowrap"
+      >
+        Factory unreachable
+      </span>
+    );
+  }
+
+  return (
+    <span
+      title="These rows were read from the factory."
+      className="rounded-pill border border-status-passed-border bg-status-passed-fill px-2 py-0.5 text-[11px] font-medium text-status-passed-text whitespace-nowrap"
+    >
+      {live.status === "hydrating" ? "Reading…" : "Live"}
+    </span>
   );
 }
 
@@ -305,6 +357,11 @@ function ThemeToggle() {
 /** What is happening across the project right now, on every screen. */
 function Ticker() {
   const items = useQuery((db) => db.ticker);
+  const screen = useScreen();
+
+  // The ticker reports the fixture project's runs. On a wired screen that
+  // would be a live-looking strip about a project the reader is not viewing.
+  if (WIRED_SCREENS.includes(screen)) return null;
   if (items.length === 0) return null;
 
   return (

@@ -41,7 +41,9 @@ export function StageTimeline({
   return (
     <ol data-slot="stage-timeline" className={cn("flex flex-col", className)} {...props}>
       {stages.map((entry, index) => (
-        <li key={entry.stage} className="relative flex gap-3">
+        // Keyed by position, not by stage name: a run that retried a stage
+        // has two `implement` entries, and keying by name collapses them.
+        <li key={`${entry.stage}-${entry.attempt ?? index}`} className="relative flex gap-3">
           {/* The rail. Drawn per row rather than as one absolute line so it
               stops cleanly at the last stage instead of trailing past it. */}
           <div className="flex flex-col items-center">

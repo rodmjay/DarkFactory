@@ -17,7 +17,14 @@ The hands (repos, deploys, infrastructure) are connectors and MCP servers.
 The factory never becomes the only way to touch a project: a developer can
 always bypass it, and drift is detected and reconciled, not prevented.
 
-**North star: ship at agent speed without losing the architecture.**
+**The line: ship at agent speed without losing the architecture.**
+
+**North star — Dark Factory builds Dark Factory.** A second factory
+instance, never the one being edited, registers this repository as a
+customer project: it maintains our own specs first, then additive work, then
+the engine itself behind an evidence gate. Anything awkward to do to
+ourselves is a product bug found for free. See
+[ADR-0034](docs/adr/0034-factory-is-its-own-first-customer.md).
 
 ## The four-step flow
 
@@ -38,7 +45,7 @@ Everything else exists to make those four steps work.
 | Where | What |
 |---|---|
 | [docs/architecture-brief.md](docs/architecture-brief.md) | **The source of truth.** Product, flow, ADR-0015→0032, data model, MCP surface, step definitions. Read it before proposing anything. |
-| [docs/adr/](docs/adr/) | ADR-0001→0033, one file each. Decisions the brief amends are amended there too. |
+| [docs/adr/](docs/adr/) | ADR-0001→0035, one file each. Decisions the brief amends are amended there too. |
 | [docs/conventions/](docs/conventions/) | The `df` convention: describe, envelope, plugin, theme, workspace. |
 | [contracts/schemas/](contracts/schemas/) | JSON Schema for the wire types: envelope, describe, spec, specdiff, plan, changeset, testreport, hookresult. |
 | [docs/evidence/](docs/evidence/) | Run and visual evidence, by step. Referenced by path, never pasted. |

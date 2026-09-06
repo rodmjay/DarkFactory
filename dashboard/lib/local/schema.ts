@@ -25,7 +25,15 @@ import type {
   TokenCost,
 } from "@dark-factory/ui";
 
-/** `projects`. `layers` is derived from the graph, not a stored column. */
+/**
+ * `projects`. `layers` is derived from the graph, not a stored column.
+ *
+ * The four roll-up counts are `number | null`, and null means *not known
+ * yet* rather than zero. A freshly registered project genuinely has no
+ * runs; a project whose roll-ups this dashboard cannot yet query has an
+ * unknown number of them, and printing `0` for the second case is a lie
+ * that looks exactly like the first.
+ */
 export interface ProjectRow {
   id: string;
   name: string;
@@ -35,13 +43,17 @@ export interface ProjectRow {
   layers: string[];
   /** Layers a standards server declared rather than the built-in five. */
   declared_layers?: string[];
-  active_runs: number;
-  parked_runs: number;
-  awaiting_amendments: number;
-  deployable_batches: number;
-  spend_usd: number;
+  active_runs: number | null;
+  parked_runs: number | null;
+  awaiting_amendments: number | null;
+  deployable_batches: number | null;
+  spend_usd: number | null;
   /** No workspace server authorized yet — the factory cannot reach code. */
   unconnected?: boolean;
+  /** The workspace server this project was registered against. */
+  workspace_mcp_url?: string;
+  /** What the factory derived from the workspace at registration. */
+  stack_hints?: string[];
 }
 
 /** `conversations`. */

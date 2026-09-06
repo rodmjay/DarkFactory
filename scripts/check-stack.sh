@@ -221,8 +221,12 @@ check_web() {
     # a 200, a quiet server, and a blank white page. So follow one
     # stylesheet the page actually asks for and confirm it resolves with
     # content behind it.
+    # -L, because a developer's browser follows redirects and `/` is one:
+    # it sends the reader to step 1 of the flow. Reading the redirect's own
+    # body instead would scrape whatever stub the framework put there, which
+    # is not a page anybody sees.
     local page css asset_status asset_bytes
-    page=$(curl -fsS "http://localhost:$port/" 2>/dev/null || true)
+    page=$(curl -fsSL "http://localhost:$port/" 2>/dev/null || true)
     css=$(printf '%s' "$page" | grep -oE '/_next/static/[^"]+\.css' | head -1)
 
     if [ -z "$css" ]; then

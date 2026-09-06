@@ -17,7 +17,9 @@
 
 import * as React from "react";
 
-import type { DecisionRow, LocalDb, ScreenName } from "./schema";
+import { loadProjects, registerProjectAction } from "../factory/actions";
+import type { FactoryProject } from "../factory/mcp";
+import type { DecisionRow, LocalDb, ProjectRow, ScreenName } from "./schema";
 import { buildDb, type Scenario } from "./fixtures";
 
 /**
@@ -42,6 +44,30 @@ export const COMMANDS = [
 ] as const;
 export type Command = (typeof COMMANDS)[number];
 
+/**
+ * How current the mirror is.
+ *
+ * `hydrating` is the honest state on first paint: the mirror is showing
+ * whatever it has while the factory is being asked. `unreachable` is not a
+ * silent fall back to fixtures — a screen that cannot reach the factory
+ * says so, because a stale roster presented as live is worse than no
+ * roster.
+ */
+/**
+ * The screens whose data comes from the factory.
+ *
+ * Everything else still renders fixtures, and the shell says so on those
+ * screens. Wiring a screen means adding it here and deleting its slice from
+ * `fixtures.ts` — so this list is the progress bar, and it is in the code
+ * rather than in a document that would drift from it.
+ */
+export const WIRED_SCREENS: ScreenName[] = ["projects"];
+
+export type LiveState =
+  | { status: "hydrating" }
+  | { status: "live" }
+  | { status: "unreachable"; error: string };
+
 interface LocalDbContextValue {
   db: LocalDb;
   screen: ScreenName;
@@ -49,6 +75,11 @@ interface LocalDbContextValue {
   /** Prototype affordance: swap the scenario the mirror is showing. */
   scenario: Scenario;
   setScenario: (scenario: Scenario) => void;
+  live: LiveState;
+  /** Which slices of the mirror are real rather than fixtures. */
+  isLive: (slice: "projects") => boolean;
+  refresh: () => void;
+  register: (url: string, name?: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 const LocalDbContext = React.createContext<LocalDbContextValue | null>(null);
@@ -71,10 +102,87 @@ export function LocalDbProvider({
    */
   const [overlay, setOverlay] = React.useState<Partial<LocalDb>>({});
 
+  /**
+   * The projects slice, hydrated from the factory.
+   *
+   * `df.projects.list` is a real query against a real database, so this is
+   * the first part of the mirror that is not a fixture. It is held
+   * separately from the overlay because a scenario change must not discard
+   * it — the roster is a fact about the org, not about which state a
+   * reviewer is looking at.
+   */
+  const [factoryProjects, setFactoryProjects] = React.useState<ProjectRow[] | null>(null);
+  const [live, setLive] = React.useState<LiveState>({ status: "hydrating" });
+
+  const org = buildDb("settled").org;
+
+  /**
+   * Apply whatever the factory said about the roster.
+   *
+   * Kept separate so both the mount effect and the retry button end in the
+   * same place, and so the state updates live in a promise callback rather
+   * than in an effect body — which is the shape React wants for "subscribe
+   * to an external system", and what `react-hooks/set-state-in-effect`
+   * checks for.
+   */
+  const apply = React.useCallback(
+    (result: Awaited<ReturnType<typeof loadProjects>>) => {
+      if (result.ok) {
+        setFactoryProjects(result.data.map((p) => toProjectRow(p, org)));
+        setLive({ status: "live" });
+      } else {
+        setLive({ status: "unreachable", error: result.error });
+      }
+    },
+    [org],
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    // `live` already starts at `hydrating`, so there is nothing to set on
+    // the way in — only on the way out.
+    loadProjects().then((result) => {
+      if (!cancelled) apply(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [apply]);
+
+  /** The retry affordance. An event handler, so it may show "hydrating". */
+  const refresh = React.useCallback(() => {
+    setLive({ status: "hydrating" });
+    loadProjects().then(apply);
+  }, [apply]);
+
+  const register = React.useCallback(
+    async (url: string, name?: string) => {
+      const result = await registerProjectAction(url, name);
+      if (!result.ok) return { ok: false, error: result.error };
+      // The factory has done the work; re-read rather than guessing what it
+      // derived — the name, the stack hints and the seeded team are all its
+      // answers, not ours.
+      refresh();
+      return { ok: true };
+    },
+    [refresh],
+  );
+
   const db = React.useMemo(() => {
     const base = buildDb(scenario);
-    return { ...base, ...overlay } as LocalDb;
-  }, [scenario, overlay]);
+
+    // A demo scenario that is *about* the roster keeps the fixture roster;
+    // anything else shows the real one once it has arrived.
+    const scenarioOwnsProjects = scenario === "projects-empty";
+    const projects =
+      scenarioOwnsProjects || factoryProjects === null ? base.projects : factoryProjects;
+
+    // `project` deliberately stays the fixture project. The screens that read
+    // it — conversation, amendments, batches, team, usage — are not wired to
+    // the factory yet, and putting a real project's name above fixture counts
+    // would be the one thing this seam exists to prevent.
+    return { ...base, projects, ...overlay } as LocalDb;
+  }, [scenario, overlay, factoryProjects]);
 
   const dispatch = React.useCallback(
     (command: Command, args: Record<string, unknown> = {}) => {
@@ -93,9 +201,14 @@ export function LocalDbProvider({
     [onScenarioChange],
   );
 
+  const isLive = React.useCallback(
+    (slice: "projects") => slice === "projects" && factoryProjects !== null,
+    [factoryProjects],
+  );
+
   const value = React.useMemo(
-    () => ({ db, screen, dispatch, scenario, setScenario }),
-    [db, screen, dispatch, scenario, setScenario],
+    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register }),
+    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register],
   );
 
   return <LocalDbContext.Provider value={value}>{children}</LocalDbContext.Provider>;
@@ -172,4 +285,39 @@ function applyCommand(
  */
 export function useDecision(): DecisionRow {
   return useLocalDb().db.decision;
+}
+
+/** How current the mirror is, and how to change it. */
+export function useLive() {
+  const { live, isLive, refresh, register } = useLocalDb();
+  return { live, isLive, refresh, register };
+}
+
+/**
+ * A factory project as a roster row.
+ *
+ * The four roll-ups stay null: `df.projects.list` does not carry them, and
+ * this dashboard cannot yet query them. Null renders as "—", which is the
+ * truth — unlike zero, which would claim the project has no runs.
+ *
+ * `stackHints` is not `layers`. The factory derives stack hints from the
+ * workspace at registration ("node", "dotnet"); layers are spec-graph
+ * layers, and a project with no specs yet genuinely has none.
+ */
+function toProjectRow(project: FactoryProject, org: string): ProjectRow {
+  return {
+    id: project.id,
+    name: project.name,
+    org,
+    node_count: 0,
+    snapshot_id: "",
+    layers: [],
+    active_runs: null,
+    parked_runs: null,
+    awaiting_amendments: null,
+    deployable_batches: null,
+    spend_usd: null,
+    workspace_mcp_url: project.workspaceMcpUrl,
+    stack_hints: project.stackHints,
+  };
 }
