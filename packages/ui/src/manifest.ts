@@ -410,12 +410,13 @@ export const manifest: DesignSystemManifest = {
         { name: "modelFamily", type: "string", required: true, note: "Required by ADR-0028: a price without a model is unreadable." },
         { name: "speed", type: "SpeedPreset" },
         { name: "role", type: "string" },
+        { name: "onTeam", type: "boolean", note: "Assigned to this project's team, not merely owned." },
         { name: "onInstall", type: "(persona: Persona) => void" },
       ],
-      states: ["free", "priced", "installed"],
+      states: ["free", "priced", "installed", "on this team"],
       shape: "ADR-0028 (personas deferred)",
       constraint:
-        "Free and priced are the same layout with a different figure. Making the paid variant louder turns a roster into a storefront, and the community tier is a first-class plugin surface.",
+        "Free and priced are the same layout with a different figure. Making the paid variant louder turns a roster into a storefront, and the community tier is a first-class plugin surface. `installed` and `on this team` stay separate: a persona can be bought for the org and used by nobody, and collapsing them makes \"why is this not running my work\" unanswerable from the card.",
     },
     {
       component: "ServerCard",
@@ -425,10 +426,10 @@ export const manifest: DesignSystemManifest = {
         { name: "server", type: "Server", required: true },
         { name: "onAuthorize", type: "(server: Server) => void" },
       ],
-      states: ["conformant", "degraded", "unreachable", "built-in-connector"],
+      states: ["conformant", "degraded", "unreachable", "built-in-connector (not authorized)"],
       shape: "contracts/schemas/describe.schema.json; ADR-0018, ADR-0019",
       constraint:
-        "Capabilities carry their conformance result — a server that claims df.vcs.open_pr and one that has demonstrated it are different things. `degraded` names the failing capability: that is the difference between a status and a diagnosis. effective_config is rendered, which is why the schema forbids secrets in it.",
+        "Capabilities carry their conformance result — a server that claims df.vcs.open_pr and one that has demonstrated it are different things. `degraded` names the failing capability: that is the difference between a status and a diagnosis. A built-in connector that has not been authorized shows `not authorized` rather than a health, because nothing has contacted it and `conformant` would assert a check that never ran. effective_config is rendered, which is why the schema forbids secrets in it.",
     },
     {
       component: "MetricTile",

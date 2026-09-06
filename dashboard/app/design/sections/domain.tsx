@@ -205,9 +205,9 @@ export function DomainComponents() {
 
       <Block
         title="PersonaCard"
-        note="Free and priced are the same layout with a different figure. Making the paid variant louder would turn a roster into a storefront, and the community tier is a first-class plugin surface (ADR-0019), not a lesser one."
+        note="Free and priced are the same layout with a different figure. Making the paid variant louder would turn a roster into a storefront, and the community tier is a first-class plugin surface (ADR-0019), not a lesser one. `installed` and `on this team` are separate states: a persona can be bought for the org and used by nobody, and collapsing them makes “why is this not running my work” unanswerable from the card."
       >
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <Frame label="free">
             <PersonaCard persona={fixture.personas.free} modelFamily="claude-sonnet-5" role="implementer" speed="balanced" />
           </Frame>
@@ -216,6 +216,9 @@ export function DomainComponents() {
           </Frame>
           <Frame label="installed">
             <PersonaCard persona={fixture.personas.installed} modelFamily="claude-opus-5" role="reviewer" speed="quick" />
+          </Frame>
+          <Frame label="on this team">
+            <PersonaCard persona={fixture.personas.onTeam} modelFamily="claude-sonnet-5" role="implementer" speed="deliberate" onTeam />
           </Frame>
         </div>
       </Block>

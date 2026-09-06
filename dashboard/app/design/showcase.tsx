@@ -69,6 +69,11 @@ export function Showcase({ initialMode }: { initialMode: ThemeMode }) {
                 {label}
               </a>
             ))}
+            {/* The showcase is not framed by the product's shell — it is the
+              * design system's own page — so it carries its own way back. */}
+            <a href="/conversation" className="text-secondary hover:text-primary">
+              ← Factory
+            </a>
           </nav>
           <div
             role="radiogroup"

@@ -65,24 +65,37 @@ export function ServerCard({ server, onAuthorize, className, ...props }: ServerC
             </div>
           </div>
 
+          {/* A built-in connector that was never authorized has no health:
+              nothing has contacted it. Showing `conformant` there asserts a
+              conformance check that never ran, which is the one claim this
+              card must not make. */}
           <span
             className={cn(
               "shrink-0 rounded-pill border px-2 py-0.5 text-2xs font-medium whitespace-nowrap",
-              serverChip[server.health],
+              needsAuthorize
+                ? "border-border bg-sunken text-secondary"
+                : serverChip[server.health],
             )}
           >
-            {server.health}
+            {needsAuthorize ? "not authorized" : server.health}
           </span>
         </div>
 
-        {server.health === "degraded" && failing.length > 0 && (
+        {needsAuthorize && (
+          <p className="rounded-control border border-dashed border-border px-2.5 py-2 text-xs text-muted">
+            Nothing has failed here. The connector ships with the product and has not been
+            given access yet.
+          </p>
+        )}
+
+        {!needsAuthorize && server.health === "degraded" && failing.length > 0 && (
           <p className="rounded-control border border-server-degraded-border bg-server-degraded-fill px-2.5 py-2 text-xs text-server-degraded-text">
             {failing.map((c) => c.name).join(", ")} failed its conformance check
             {failing[0]?.detail ? ` — ${failing[0].detail}` : "."}
           </p>
         )}
 
-        {server.health === "unreachable" && (
+        {!needsAuthorize && server.health === "unreachable" && (
           <p className="rounded-control border border-dashed border-border px-2.5 py-2 text-xs text-muted">
             Not reachable from the factory. Usually a network fact rather than a fault — the
             last known describe is shown below.

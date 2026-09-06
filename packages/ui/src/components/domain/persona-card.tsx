@@ -15,6 +15,14 @@ export interface PersonaCardProps extends React.ComponentProps<"div"> {
   modelFamily: string;
   speed?: SpeedPreset;
   role?: string;
+  /**
+   * This persona is assigned to the project's team, not merely owned.
+   *
+   * Distinct from `persona.installed` on purpose: a persona can be bought
+   * for the org and used by nobody. Collapsing the two would make "why is
+   * this not running my work" a question the card cannot answer.
+   */
+  onTeam?: boolean;
   onInstall?: (persona: Persona) => void;
 }
 
@@ -38,6 +46,7 @@ export function PersonaCard({
   modelFamily,
   speed,
   role,
+  onTeam = false,
   onInstall,
   className,
   ...props
@@ -48,7 +57,8 @@ export function PersonaCard({
     <Card
       data-slot="persona-card"
       data-installed={persona.installed || undefined}
-      className={cn(persona.installed && "border-accent-border", className)}
+      data-on-team={onTeam || undefined}
+      className={cn((persona.installed || onTeam) && "border-accent-border", className)}
       {...props}
     >
       <CardContent className="flex flex-col gap-3 pt-3.5">
@@ -96,7 +106,11 @@ export function PersonaCard({
       </CardContent>
 
       <CardFooter>
-        {persona.installed ? (
+        {onTeam ? (
+          <Button variant="outline" size="sm" disabled>
+            <CheckIcon /> On this team
+          </Button>
+        ) : persona.installed ? (
           <Button variant="outline" size="sm" disabled>
             <CheckIcon /> Installed
           </Button>

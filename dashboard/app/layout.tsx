@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
+import type * as React from "react";
 import { Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
 
 /* The three type choices are recorded in packages/ui/DESIGN.md. The package
@@ -24,31 +24,17 @@ export const metadata: Metadata = {
   description: "Hosted, multi-project software factory dashboard.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      /* Dark is the primary theme (ADR-0033). Light is reachable by removing
-       * this class; a persisted per-user preference is step 4 work. */
+      /* Dark is the primary theme (ADR-0033). The header's toggle swaps this
+       * class for `light`, which is a complete second theme rather than an
+       * inversion of this one. */
       className={`dark ${instrumentSans.variable} ${ibmPlexMono.variable} h-full`}
       suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col bg-page text-primary">
-        <header className="border-b border-border px-6 py-3">
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="/projects" className="font-semibold tracking-tight">
-              Dark Factory
-            </Link>
-            <Link href="/projects" className="text-secondary hover:text-primary">
-              Projects
-            </Link>
-            <Link href="/design" className="ml-auto text-secondary hover:text-primary">
-              Design system
-            </Link>
-          </nav>
-        </header>
-        <main className="flex-1">{children}</main>
-      </body>
+      <body className="min-h-full bg-page text-primary">{children}</body>
     </html>
   );
 }

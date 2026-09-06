@@ -469,6 +469,17 @@ export const personas: Record<string, Persona> = {
     price_usd: 25,
     installed: true,
   },
+  // Owned *and* assigned to this project's team — the state that answers
+  // "is this persona actually doing any of my work".
+  onTeam: {
+    id: "p4",
+    name: "Hollis",
+    author: "Ovrline Standards",
+    description:
+      "A deliberate implementer that reads the standards server before it writes, and refuses work that contradicts a layer's conventions.",
+    price_usd: 40,
+    installed: true,
+  },
 };
 
 export const servers: Record<string, Server> = {
