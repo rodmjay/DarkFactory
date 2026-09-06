@@ -25,7 +25,7 @@ and
 
 ## Commit hash
 
-`55f8feb` — branch `screens-step4`.
+`1323071` — branch `screens-step4`. This report is the commit that follows it.
 
 ## What changed
 
