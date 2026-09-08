@@ -75,7 +75,7 @@ developer's browser follows redirects.
 | `pnpm check` | exit 0 — 76 files no raw colours; 162 token pairs pass contrast; export bundle current; lint clean; typecheck clean |
 | `pnpm test:visual` | exit 0 — 14 passed |
 | `dotnet test DarkFactory.sln` | exit 0 — 194 passed, 2 skipped |
-| `DASHBOARD_PORT=3400 ./scripts/check-stack.sh` | exit 0 — six services healthy from an empty volume; `assets resolve (64977 bytes)` |
+| `./scripts/check-stack.sh` | exit 0 — six services healthy from an empty volume; `assets resolve (64977 bytes)` |
 
 **The changed check was shown to fail against planted breakage.** Commenting
 out the `cpSync` in `serve-standalone.mjs` reproduces the historical failure
@@ -116,9 +116,10 @@ that cannot answer it is not registered."*
 ## Things I was wrong about
 
 - I read a 500 from `check-stack` and first blamed an unrelated container
-  (`pro2-shell`) squatting host port 3000. Re-running on a free port
-  reproduced the failure, so the squatter was a real but separate problem
-  and the regression was mine.
+  (`pro2-shell`) squatting host port 3000. That was wrong twice over: this
+  repo's `.env` publishes the dashboard on **13000**, so the container was
+  never on 3000 and I had simply been curling someone else's server. The
+  regression was mine, and re-running proved it.
 - I then chased a 404 on a stylesheet that was actually a stale orphaned
   server on port 14999 answering for a previous build — the exact scenario
   `serve-standalone.mjs` documents and refuses. It was doing its job; I was
@@ -144,11 +145,11 @@ that cannot answer it is not registered."*
   so.** Registering an already-registered workspace silently returns the
   existing project, which reads as success on a no-op. Worth a distinct
   message once the tool tells us which happened.
-- **A note for whoever runs this stack:** an unrelated container on this
-  machine holds host port 3000, which is `check-stack`'s default dashboard
-  port. `DASHBOARD_PORT=3400` works around it. The check does not detect a
-  foreign listener the way `serve-standalone.mjs` does — that asymmetry is
-  worth closing.
+- **A note for whoever runs this stack:** the published ports come from
+  `.env` — dashboard **13000**, factory **15100**, workspace-demo 18931,
+  Postgres 15432 — not from the defaults in `docker-compose.yml`. Reading
+  the compose file alone and curling port 3000 gets you whatever else is on
+  this machine, which is exactly the mistake recorded above.
 
 ## Next
 
