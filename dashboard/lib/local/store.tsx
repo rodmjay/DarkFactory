@@ -317,7 +317,7 @@ function toProjectRow(project: FactoryProject, org: string): ProjectRow {
     awaiting_amendments: null,
     deployable_batches: null,
     spend_usd: null,
-    workspace_mcp_url: project.workspaceMcpUrl,
-    stack_hints: project.stackHints,
+    workspace_mcp_url: project.workspace_mcp_url,
+    stack_hints: project.stack_hints,
   };
 }

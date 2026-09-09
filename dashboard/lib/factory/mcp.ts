@@ -143,17 +143,53 @@ function parse(raw: string): JsonRpcResponse {
 
 // ---------------------------------------------------------------- projects
 
-/** `ProjectSummary` as `df.projects.*` serializes it. */
+/**
+ * `ProjectSummary` as `df.projects.*` serializes it.
+ *
+ * snake_case, because that is the wire convention the schemas under
+ * `contracts/schemas/` use throughout — see DESIGN.md § Wire shapes, which
+ * records the time the envelope briefly serialized camelCase by inheriting
+ * the SDK's default handling of C# records. This client was written against
+ * a build doing exactly that and broke silently when the factory went back
+ * to the documented shape: the fields simply read `undefined`, so the
+ * roster still rendered and just quietly lost its stack hints.
+ *
+ * `normalizeProject` therefore accepts either spelling rather than trusting
+ * one. A screen that loses a column without erroring is the worst way to
+ * find out a serializer moved.
+ */
 export interface FactoryProject {
   id: string;
   name: string;
-  workspaceMcpUrl: string;
-  stackHints: string[];
+  workspace_mcp_url: string;
+  stack_hints: string[];
+  team_id?: string | null;
+}
+
+interface FactoryProjectWire {
+  id: string;
+  name: string;
+  workspace_mcp_url?: string;
+  workspaceMcpUrl?: string;
+  stack_hints?: string[];
+  stackHints?: string[];
+  team_id?: string | null;
   teamId?: string | null;
 }
 
-export function listProjects(): Promise<FactoryProject[]> {
-  return callTool<FactoryProject[]>("df.projects.list");
+function normalizeProject(wire: FactoryProjectWire): FactoryProject {
+  return {
+    id: wire.id,
+    name: wire.name,
+    workspace_mcp_url: wire.workspace_mcp_url ?? wire.workspaceMcpUrl ?? "",
+    stack_hints: wire.stack_hints ?? wire.stackHints ?? [],
+    team_id: wire.team_id ?? wire.teamId ?? null,
+  };
+}
+
+export async function listProjects(): Promise<FactoryProject[]> {
+  const wire = await callTool<FactoryProjectWire[]>("df.projects.list");
+  return (wire ?? []).map(normalizeProject);
 }
 
 /**
@@ -164,14 +200,15 @@ export function listProjects(): Promise<FactoryProject[]> {
  * name, and seeds the project's default team. The dashboard's whole job is
  * to collect one URL and show what came back.
  */
-export function registerProject(
+export async function registerProject(
   workspaceMcpUrl: string,
   name?: string,
 ): Promise<FactoryProject> {
-  return callTool<FactoryProject>("df.projects.register", {
+  const wire = await callTool<FactoryProjectWire>("df.projects.register", {
     workspace_mcp_url: workspaceMcpUrl,
     ...(name ? { name } : {}),
   });
+  return normalizeProject(wire);
 }
 
 /** `TeamMemberSummary` from `df.projects.team`. */

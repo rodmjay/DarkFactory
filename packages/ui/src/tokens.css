@@ -24,9 +24,9 @@
    * (Next's next/font sets --font-instrument-sans / --font-ibm-plex-mono).
    * The fallbacks make the package render sensibly with no app wiring.
    */
-  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui,
+  --df-font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: var(--font-ibm-plex-mono), ui-monospace, "SF Mono",
+  --df-font-mono: var(--font-ibm-plex-mono), ui-monospace, "SF Mono",
     "Cascadia Mono", Menlo, Consolas, monospace;
 
   /* -- Neutral ramp: warm, hue 70 ------------------------------------------
@@ -352,16 +352,16 @@
 :root,
 .light {
   /* Three radii, no more. Controls, containers, pills. */
-  --radius-control: 0.375rem;
-  --radius-card: 0.625rem;
-  --radius-pill: 9999px;
+  --df-radius-control: 0.375rem;
+  --df-radius-card: 0.625rem;
+  --df-radius-pill: 9999px;
 
   /* Two levels of elevation. Anything that needs a third needs a different
    * layout instead. In dark the ramp does the lifting, so the shadows are
    * near-invisible and a hairline ring carries the edge. */
-  --shadow-raised: 0 1px 2px oklch(0.222 0.008 70 / 0.06),
+  --df-shadow-raised: 0 1px 2px oklch(0.222 0.008 70 / 0.06),
     0 1px 1px oklch(0.222 0.008 70 / 0.04);
-  --shadow-overlay: 0 8px 28px oklch(0.222 0.008 70 / 0.12),
+  --df-shadow-overlay: 0 8px 28px oklch(0.222 0.008 70 / 0.12),
     0 2px 6px oklch(0.222 0.008 70 / 0.08);
 
   /* Fast is for state (hover, press, check). Slow is for layout (a sheet
@@ -373,8 +373,8 @@
 }
 
 .dark {
-  --shadow-raised: 0 1px 2px oklch(0 0 0 / 0.4);
-  --shadow-overlay: 0 12px 36px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.4);
+  --df-shadow-raised: 0 1px 2px oklch(0 0 0 / 0.4);
+  --df-shadow-overlay: 0 12px 36px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.4);
 }
 
 /* The reduced-motion rule is global and unconditional: a user who has asked
@@ -513,15 +513,23 @@
   --color-server-unreachable-border: var(--server-unreachable-border);
   --color-server-unreachable-text: var(--server-unreachable-text);
 
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  /* These map an internal `--df-*` token onto the name Tailwind and the app
+   * use. They must not be written as `--font-sans: var(--font-sans)`: this
+   * block is emitted onto `:root` *after* the block above, so a matching
+   * name makes the property reference itself. A self-referential custom
+   * property is invalid at computed-value time — Firefox voids it, and
+   * `font-family: var(--font-sans)` then resolves to nothing, which is how
+   * the whole product came to render without any text in one browser and
+   * fine in another. */
+  --font-sans: var(--df-font-sans);
+  --font-mono: var(--df-font-mono);
 
-  --radius-control: var(--radius-control);
-  --radius-card: var(--radius-card);
-  --radius-pill: var(--radius-pill);
+  --radius-control: var(--df-radius-control);
+  --radius-card: var(--df-radius-card);
+  --radius-pill: var(--df-radius-pill);
 
-  --shadow-raised: var(--shadow-raised);
-  --shadow-overlay: var(--shadow-overlay);
+  --shadow-raised: var(--df-shadow-raised);
+  --shadow-overlay: var(--df-shadow-overlay);
 
   --ease-quiet: var(--motion-ease);
 
