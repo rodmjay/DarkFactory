@@ -33,6 +33,9 @@ public sealed class Intake
     /// </summary>
     public required string CorpusRef { get; init; }
     public required string CorpusSha256 { get; init; }
+
+    /// <summary>The corpus server it was pulled from (docs/adr/0038); null when submitted inline.</summary>
+    public string? SourceServerId { get; init; }
     public required string CreatedBy { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
 }
@@ -55,6 +58,13 @@ public sealed class IntakeSource
     public required string Title { get; init; }
     public required string Content { get; init; }
     public required string ContentSha256 { get; init; }
+
+    /// <summary>The document's id on the corpus server, when pulled from one.</summary>
+    public string? OriginId { get; init; }
+
+    /// <summary>The hash the server listed at pull time — what drift is measured against.</summary>
+    public string? OriginSha256 { get; init; }
+    public string? OriginUpdated { get; init; }
     public required IntakeSourceStatus Status { get; set; }
 
     /// <summary>

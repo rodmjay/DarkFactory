@@ -126,14 +126,66 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
             }
         }
 
+        // It answered moments ago, so registration is also its first health
+        // check (docs/adr/0038): the monitor's next look is a full interval
+        // away rather than immediately repeating what was just established.
+        server.LastCheckedAt = now;
+        server.LastSeenAt = now;
+        server.ConsecutiveFailures = 0;
+        server.UnreachableSince = null;
+        server.LastError = null;
+        server.NextCheckAt = now + ServerHealthService.HealthyInterval;
+
         // Persisted before conformance so the results have a server row to
         // point at, and so a crash mid-check leaves a registered server
         // with no conformance rather than conformance with no server.
         await db.SaveChangesAsync(cancellationToken);
 
+        var results = await ConformAsync(server, diff, live.Capabilities, cancellationToken);
+        return new ServerRegistration(server, live, diff, results);
+    }
+
+    /// <summary>
+    /// Re-establishes what registration established — the manifest/live
+    /// diff and conformance — for a server already in the registry. This is
+    /// what healing does once a server answers again (docs/adr/0038), and
+    /// what happens when a server starts saying something new about itself.
+    /// </summary>
+    public async Task<IReadOnlyList<ConformanceResult>> ReverifyAsync(
+        Server server, DescribeResponse live, CancellationToken cancellationToken = default)
+    {
+        var liveJson = JsonSerializer.Serialize(live);
+
+        // Registered without a manifest, a server's "manifest" is only its
+        // first describe, not a claim anyone made. Diffing a later describe
+        // against it would mark every upgraded server degraded for having
+        // changed, so such a manifest moves with the live answer. A manifest
+        // somebody actually supplied stays the claim of record.
+        DescribeResponse manifest;
+        if (string.Equals(server.ManifestJson, server.LiveDescribeJson, StringComparison.Ordinal))
+        {
+            server.ManifestJson = liveJson;
+            manifest = live;
+        }
+        else
+        {
+            manifest = DescribeSchema.TryParse(server.ManifestJson, out var parsed).IsValid ? parsed! : live;
+        }
+
+        server.Name = live.Name;
+        server.Domain = live.Domain;
+        server.ConventionVersion = live.ConventionVersion;
+        server.LiveDescribeJson = liveJson;
+
+        return await ConformAsync(server, ManifestLiveDiff.Compute(manifest, live), live.Capabilities, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ConformanceResult>> ConformAsync(
+        Server server, ManifestLiveDiff diff, IReadOnlyList<string> capabilities, CancellationToken cancellationToken)
+    {
         var conformanceRunId = Ulid.NewUlid();
         var results = await new ConformanceChecker(probe).RunAsync(
-            server.Id, url, conformanceRunId, live.Capabilities, cancellationToken);
+            server.Id, server.Url, conformanceRunId, capabilities, cancellationToken);
 
         db.ConformanceResults.AddRange(results);
 
@@ -142,8 +194,7 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
         server.LastConformanceAt = DateTimeOffset.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
-
-        return new ServerRegistration(server, live, diff, results);
+        return results;
     }
 
     /// <summary>
@@ -164,10 +215,30 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
         return anyFailed || !diff.IsEmpty ? ServerStatus.Degraded : ServerStatus.Conformant;
     }
 
+    /// <summary>
+    /// How long registration waits before asking again after a miss that
+    /// may not repeat. A server mid-restart is the common case when someone
+    /// has just started it and registered straight away; failing that
+    /// registration would make connecting feel fragile for no reason.
+    /// </summary>
+    public static readonly IReadOnlyList<TimeSpan> DescribeRetryDelays = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)];
+
     /// <summary>Calls df.describe and validates the answer. Throws with the schema violations when it doesn't hold up.</summary>
     private async Task<DescribeResponse> DescribeAsync(string url, CancellationToken cancellationToken)
     {
         var result = await probe.CallAsync(url, DescribeTool, new Dictionary<string, object?>(), DescribeDeadline, cancellationToken);
+
+        // Only a retryable miss is asked again. A permanent one — no such
+        // tool, a refused URL — is the same answer however often it is asked.
+        foreach (var delay in DescribeRetryDelays)
+        {
+            if (result.Ok || result.Failure != FailureClass.Retryable)
+            {
+                break;
+            }
+            await Task.Delay(delay, cancellationToken);
+            result = await probe.CallAsync(url, DescribeTool, new Dictionary<string, object?>(), DescribeDeadline, cancellationToken);
+        }
 
         if (!result.Ok)
         {

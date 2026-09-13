@@ -5,7 +5,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DarkFactory.Data;
 
-public sealed record IntakeSourceInput(string SourceRef, string Title, string Content);
+public sealed record IntakeSourceInput(string SourceRef, string Title, string Content)
+{
+    /// <summary>Set when pulled from a corpus server (docs/adr/0038).</summary>
+    public string? OriginId { get; init; }
+    public string? OriginSha256 { get; init; }
+    public string? OriginUpdated { get; init; }
+}
 
 public sealed record IntakeStarted(Intake Intake, IReadOnlyList<IntakeSource> Sources);
 
@@ -77,7 +83,8 @@ public sealed class IntakeService(
         string name,
         IReadOnlyList<IntakeSourceInput> sources,
         string createdBy,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? sourceServerId = null)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -144,6 +151,7 @@ public sealed class IntakeService(
             ConversationId = conversation.Id,
             CorpusRef = ArtifactRef.Format(corpus.Id),
             CorpusSha256 = corpusSha,
+            SourceServerId = sourceServerId,
             CreatedBy = createdBy,
             CreatedAt = now,
         };
@@ -160,6 +168,9 @@ public sealed class IntakeService(
             Title = o.Input.Title,
             Content = o.Input.Content,
             ContentSha256 = o.Sha,
+            OriginId = o.Input.OriginId,
+            OriginSha256 = o.Input.OriginSha256,
+            OriginUpdated = o.Input.OriginUpdated,
             Status = IntakeSourceStatus.Pending,
             DraftRevision = 0,
             CreatedAt = now,

@@ -29,13 +29,25 @@ public sealed class ConformanceChecker(IServerProbe probe)
     /// </summary>
     public static readonly TimeSpan ProbeDeadline = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// The one directory a workspace probe writes into, inside the
+    /// customer's working tree. Fixed rather than per pass: conformance now
+    /// re-runs every time a server heals (docs/adr/0038), and a directory
+    /// per pass left a new folder in someone's repository after every
+    /// restart — the workspace convention has no delete to clean up with.
+    /// Each pass overwrites the same marker instead.
+    /// </summary>
+    public const string ScratchDirectory = ".df-conformance/probe";
+
     private const string WriteMany = "df.files.write_many";
     private const string List = "df.files.list";
     private const string ExecRun = "df.exec.run";
+    private const string CorpusList = "df.corpus.list";
+    private const string CorpusGet = "df.corpus.get";
 
     /// <summary>Capabilities this slice knows how to check. Everything else is recorded as NotProbed.</summary>
     public static IReadOnlySet<string> ProbedCapabilities { get; } =
-        new HashSet<string>(StringComparer.Ordinal) { WriteMany, List, ExecRun };
+        new HashSet<string>(StringComparer.Ordinal) { WriteMany, List, ExecRun, CorpusList, CorpusGet };
 
     public async Task<IReadOnlyList<ConformanceResult>> RunAsync(
         string serverId,
@@ -45,8 +57,9 @@ public sealed class ConformanceChecker(IServerProbe probe)
         CancellationToken cancellationToken = default)
     {
         // The factory chooses this path. Nothing the server said influences
-        // it, and it is unique per pass so two registrations never collide.
-        var scratchDirectory = $".df-conformance/{conformanceRunId}";
+        // it. The pass is identified by conformanceRunId on its results, not
+        // by a directory in the customer's tree.
+        var scratchDirectory = ScratchDirectory;
         var markerPath = $"{scratchDirectory}/probe.txt";
 
         var results = new List<ConformanceResult>();
@@ -76,6 +89,31 @@ public sealed class ConformanceChecker(IServerProbe probe)
             // the probe actually asserts on, so it is still meaningful.
             var outcome = await ProbeExecAsync(serverUrl, wrote ? scratchDirectory : null, cancellationToken);
             results.Add(Row(serverId, conformanceRunId, ExecRun, outcome));
+        }
+
+        // A corpus server (docs/conventions/corpus.md): list it, then fetch
+        // the first document and check its text hashes to what list said.
+        // That hash is the one promise an import depends on.
+        if (declared.Contains(CorpusList))
+        {
+            var (outcome, first) = await ProbeCorpusListAsync(serverUrl, cancellationToken);
+            results.Add(Row(serverId, conformanceRunId, CorpusList, outcome));
+
+            if (declared.Contains(CorpusGet))
+            {
+                var get = first is null
+                    ? new Outcome(outcome.Status == ConformanceStatus.Passed ? ConformanceStatus.NotProbed : ConformanceStatus.Failed,
+                        outcome.Status == ConformanceStatus.Passed
+                            ? "the corpus is empty, so there was no document to fetch"
+                            : $"skipped: {CorpusList} did not pass, so there was no document to fetch", 0)
+                    : await ProbeCorpusGetAsync(serverUrl, first.Value.Id, first.Value.Sha256, cancellationToken);
+                results.Add(Row(serverId, conformanceRunId, CorpusGet, get));
+            }
+        }
+        else if (declared.Contains(CorpusGet))
+        {
+            results.Add(Row(serverId, conformanceRunId, CorpusGet,
+                new Outcome(ConformanceStatus.Failed, $"declared without {CorpusList}, so there is no id to fetch", 0)));
         }
 
         // Everything the server declared that we have no probe for. Recorded
@@ -177,6 +215,73 @@ public sealed class ConformanceChecker(IServerProbe probe)
             : new Outcome(ConformanceStatus.Failed,
                 $"'{ProbeCommand}' exited 0 but stdout did not contain '{ProbeMarker}' (got: {Truncate(result.Json!)})",
                 result.DurationMs);
+    }
+
+    private async Task<(Outcome Outcome, (string Id, string Sha256)? First)> ProbeCorpusListAsync(
+        string serverUrl, CancellationToken cancellationToken)
+    {
+        var result = await probe.CallAsync(serverUrl, CorpusList, new Dictionary<string, object?>(), ProbeDeadline, cancellationToken);
+        if (!result.Ok)
+        {
+            return (new Outcome(ConformanceStatus.Failed, result.Error, result.DurationMs), null);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(result.Json!);
+            if (!document.RootElement.TryGetProperty("documents", out var array) || array.ValueKind != JsonValueKind.Array)
+            {
+                return (new Outcome(ConformanceStatus.Failed,
+                    $"response had no 'documents' array (got: {Truncate(result.Json!)})", result.DurationMs), null);
+            }
+
+            (string, string)? first = null;
+            foreach (var entry in array.EnumerateArray())
+            {
+                var id = entry.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String ? i.GetString() : null;
+                var sha = entry.TryGetProperty("sha256", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
+                if (string.IsNullOrEmpty(id) || sha is null || sha.Length != 64)
+                {
+                    return (new Outcome(ConformanceStatus.Failed,
+                        $"a listed document has no id or no 64-character sha256 (got: {Truncate(entry.GetRawText())})",
+                        result.DurationMs), null);
+                }
+                first ??= (id, sha);
+            }
+
+            return (new Outcome(ConformanceStatus.Passed, null, result.DurationMs), first);
+        }
+        catch (JsonException ex)
+        {
+            return (new Outcome(ConformanceStatus.Failed, $"response was not valid JSON: {ex.Message}", result.DurationMs), null);
+        }
+    }
+
+    private async Task<Outcome> ProbeCorpusGetAsync(
+        string serverUrl, string id, string listedSha256, CancellationToken cancellationToken)
+    {
+        var result = await probe.CallAsync(serverUrl, CorpusGet, new Dictionary<string, object?> { ["id"] = id },
+            ProbeDeadline, cancellationToken);
+        if (!result.Ok)
+        {
+            return new Outcome(ConformanceStatus.Failed, result.Error, result.DurationMs);
+        }
+
+        using var document = JsonDocument.Parse(result.Json!);
+        var text = document.RootElement.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
+            ? t.GetString()
+            : null;
+        if (text is null)
+        {
+            return new Outcome(ConformanceStatus.Failed,
+                $"response for '{id}' had no text (got: {Truncate(result.Json!)})", result.DurationMs);
+        }
+
+        var computed = SpecGraphService.ComputeHash(text);
+        return string.Equals(computed, listedSha256, StringComparison.Ordinal)
+            ? new Outcome(ConformanceStatus.Passed, null, result.DurationMs)
+            : new Outcome(ConformanceStatus.Failed,
+                $"the text of '{id}' hashes to {computed}, but {CorpusList} listed {listedSha256}", result.DurationMs);
     }
 
     private static bool TryReadArray(string json, string property, out List<string> values, out string? error)

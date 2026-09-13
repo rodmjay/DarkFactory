@@ -65,7 +65,7 @@ developer experience than "registration failed."
 | `name` | yes | Shown in the registry and dashboard. |
 | `convention_version` | yes | Semver. The version this server prefers to speak. |
 | `convention_versions` | no | Every version it *can* speak, when more than one. Must contain `convention_version`. |
-| `domain` | yes | `factory`, `workspace`, `vcs`, `deploy`, `standards`, `qa`, `knowledge`, `observability`, `ticketing`, `agent`. |
+| `domain` | yes | `factory`, `workspace`, `vcs`, `deploy`, `standards`, `corpus` ([corpus.md](corpus.md)), `qa`, `knowledge`, `observability`, `ticketing`, `agent`. |
 | `capabilities` | yes | Dotted `df.*` names implemented. |
 | `requires` | yes | Dotted `df.*` names needed from elsewhere. Empty array if none. |
 | `effective_config` | yes | What this instance is pointed at. **Never secrets** — see below. |

@@ -37,6 +37,40 @@ public static class IntakeTools
         return await Summarize(intake, started.Intake.Id, cancellationToken);
     }
 
+    [McpServerTool(Name = "df.intake.pull"),
+     Description("Start an import by pulling every document from a registered corpus server (docs/conventions/corpus.md). Superseded and rejected documents are left out unless asked for. Each document's text is checked against the hash the server listed.")]
+    public static async Task<IntakeSummary> Pull(
+        CorpusImporter importer,
+        IntakeService intake,
+        IConfiguration configuration,
+        [Description("The project to import into.")] string project_id,
+        [Description("The corpus server's id, from df.servers.list.")] string server_id,
+        [Description("A name for this import. Defaults to the server's name.")] string? name = null,
+        [Description("Only documents in this area, e.g. \"drones\".")] string? area = null,
+        [Description("Also import superseded and rejected documents.")] bool include_retired = false,
+        CancellationToken cancellationToken = default)
+    {
+        var started = await Errors.Surfacing(() => importer.PullAsync(
+            project_id, server_id, name, area, include_retired, ServerTools.ResolveOrgId(configuration), cancellationToken));
+        return await Summarize(intake, started.Intake.Id, cancellationToken);
+    }
+
+    [McpServerTool(Name = "df.intake.drift"),
+     Description("What has changed at the corpus server since this import was pulled: documents edited, added or removed. A report — the factory is authoritative after import, so nothing is re-imported.")]
+    public static async Task<CorpusDriftResult> Drift(
+        CorpusImporter importer,
+        [Description("The intake id.")] string intake_id,
+        CancellationToken cancellationToken = default)
+    {
+        var drift = await Errors.Surfacing(() => importer.DriftAsync(intake_id, cancellationToken));
+        return new CorpusDriftResult(
+            drift.IntakeId,
+            drift.ServerName,
+            drift.Changed.Select(c => new CorpusDriftChange(c.OriginId, c.SourceId, c.ImportedSha256, c.CurrentSha256)).ToList(),
+            drift.Added.Select(d => d.Id).ToList(),
+            drift.Removed);
+    }
+
     [McpServerTool(Name = "df.intake.extract"),
      Description("Extract, or re-extract, one source document: a draft of small spec nodes plus the holes an implementer would have to guess at, raised as questions. Re-extracting builds answered questions into the draft.")]
     public static async Task<IntakeExtractResult> Extract(
@@ -228,3 +262,12 @@ public sealed record IntakeExtractResult(
     int TokensUsed);
 
 public sealed record IntakeProposed(string SourceId, string AmendmentId, string Status);
+
+public sealed record CorpusDriftChange(string OriginId, string SourceId, string ImportedSha256, string CurrentSha256);
+
+public sealed record CorpusDriftResult(
+    string IntakeId,
+    string ServerName,
+    IReadOnlyList<CorpusDriftChange> Changed,
+    IReadOnlyList<string> Added,
+    IReadOnlyList<string> Removed);

@@ -36,6 +36,7 @@
         "vcs",
         "deploy",
         "standards",
+        "corpus",
         "qa",
         "knowledge",
         "observability",

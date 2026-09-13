@@ -287,6 +287,9 @@ df.intake.start(project_id, name, sources[])         import an existing corpus (
 df.intake.extract(source_id)                         draft + holes as questions; re-run to fill
 df.intake.status / questions / answer / defer
 df.intake.propose(source_id)                         → amendment; refused while holes are open
+df.intake.pull(project_id, server_id, area?)         import from a corpus server (ADR-0038)
+df.intake.drift(intake_id)                           what changed at the source since the pull
+df.servers.check(server_id)                          health check now; heals if it was down (ADR-0038)
 ```
 
 Resources: `factory://projects`, `factory://projects/{id}/specs`,
