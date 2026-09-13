@@ -282,6 +282,10 @@ df.work.create(project_id, amendment_ids[])          → run
 df.work.attach(run_id)                               stream; stub returns current event tail
 df.work.steer(run_id, message)                       stub records the event
 df.servers.register(url) / list / remove             register runs describe + conformance
+df.intake.start(project_id, name, sources[])         import an existing corpus (ADR-0037)
+df.intake.extract(source_id)                         draft + holes as questions; re-run to fill
+df.intake.status / questions / answer / defer
+df.intake.propose(source_id)                         → amendment; refused while holes are open
 ```
 
 Resources: `factory://projects`, `factory://projects/{id}/specs`,

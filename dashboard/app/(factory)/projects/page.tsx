@@ -56,7 +56,10 @@ export default function ProjectsPage() {
         <div>
           <h1 className="text-lg font-semibold">Projects</h1>
           <p className="mt-0.5 text-xs text-secondary">
-            {org} · {projects.length} project{projects.length === 1 ? "" : "s"} ·{" "}
+            {/* The factory carries no org, so outside the prototype there is
+                none to prefix — rather than a fixture tenant's name. */}
+            {org ? `${org} · ` : ""}
+            {projects.length} project{projects.length === 1 ? "" : "s"} ·{" "}
             {live.status === "live"
               ? "read from the factory"
               : live.status === "hydrating"

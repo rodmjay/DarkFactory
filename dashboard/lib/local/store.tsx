@@ -77,10 +77,12 @@ export type Command = FactoryCommand | PendingCommand;
 /**
  * The screens whose data comes from the factory.
  *
- * Everything else still renders fixtures, and the shell says so on those
- * screens. Wiring a screen means adding it here and deleting its slice from
- * `fixtures.ts` — so this list is the progress bar, and it is in the code
- * rather than in a document that would drift from it.
+ * Everything else is not read from the factory yet. By default the shell
+ * renders those screens as exactly that — a named gap, not their fixture
+ * rows — and only a `?state=` link opens the prototype underneath. Wiring a
+ * screen means adding it here and deleting its slice from `fixtures.ts` — so
+ * this list is the progress bar, and it is in the code rather than in a
+ * document that would drift from it.
  */
 export const WIRED_SCREENS: ScreenName[] = ["projects"];
 
@@ -93,8 +95,12 @@ interface LocalDbContextValue {
   db: LocalDb;
   screen: ScreenName;
   dispatch: (command: Command, args?: Record<string, unknown>) => void;
-  /** Prototype affordance: swap the scenario the mirror is showing. */
-  scenario: Scenario;
+  /**
+   * Prototype affordance: the scenario the mirror is showing, or null when
+   * no `?state=` was asked for — which is the product, and shows no
+   * fixture row anywhere.
+   */
+  scenario: Scenario | null;
   setScenario: (scenario: Scenario) => void;
   live: LiveState;
   /** Which slices of the mirror are real rather than fixtures. */
@@ -112,7 +118,7 @@ export function LocalDbProvider({
   children,
 }: {
   screen: ScreenName;
-  scenario: Scenario;
+  scenario: Scenario | null;
   onScenarioChange: (scenario: Scenario) => void;
   children: React.ReactNode;
 }) {
@@ -135,8 +141,6 @@ export function LocalDbProvider({
   const [factoryProjects, setFactoryProjects] = React.useState<ProjectRow[] | null>(null);
   const [live, setLive] = React.useState<LiveState>({ status: "hydrating" });
 
-  const org = buildDb("settled").org;
-
   /**
    * Apply whatever the factory said about the roster.
    *
@@ -149,13 +153,13 @@ export function LocalDbProvider({
   const apply = React.useCallback(
     (result: Awaited<ReturnType<typeof loadProjects>>) => {
       if (result.ok) {
-        setFactoryProjects(result.data.map((p) => toProjectRow(p, org)));
+        setFactoryProjects(result.data.map(toProjectRow));
         setLive({ status: "live" });
       } else {
         setLive({ status: "unreachable", error: result.error });
       }
     },
-    [org],
+    [],
   );
 
   React.useEffect(() => {
@@ -190,6 +194,32 @@ export function LocalDbProvider({
   );
 
   const db = React.useMemo(() => {
+    if (scenario === null) {
+      // The product. Every slice anything on screen reads without `?state=`
+      // is either the factory's answer or empty: the roster and the current
+      // project come from `df.projects.list`, and nothing arrives before it
+      // has answered. The factory carries no org, so there is none to show,
+      // and the counts and the ticker are empty because no factory query
+      // backs them yet — which is also what makes the header's badges and
+      // the ticker disappear, by their own rules rather than by a special
+      // case.
+      //
+      // The remaining slices are still the fixture base, because `LocalDb`
+      // has no empty value for most of them. Nothing reads them here: the
+      // shell renders an unwired screen as a gap, not as its page.
+      const projects = factoryProjects ?? [];
+      return {
+        ...buildDb("settled"),
+        org: "",
+        project: projects[0] ?? null,
+        projects,
+        ticker: [],
+        amendments: [],
+        batches: [],
+        ...overlay,
+      } as LocalDb;
+    }
+
     const base = buildDb(scenario);
 
     // A demo scenario that is *about* the roster keeps the fixture roster;
@@ -198,10 +228,10 @@ export function LocalDbProvider({
     const projects =
       scenarioOwnsProjects || factoryProjects === null ? base.projects : factoryProjects;
 
-    // `project` deliberately stays the fixture project. The screens that read
-    // it — conversation, amendments, batches, team, usage — are not wired to
-    // the factory yet, and putting a real project's name above fixture counts
-    // would be the one thing this seam exists to prevent.
+    // Under `?state=`, `project` deliberately stays the fixture project. The
+    // screens that read it — conversation, amendments, batches, team, usage —
+    // are showing their prototypes, and putting a real project's name above
+    // fixture counts would be the one thing this seam exists to prevent.
     return { ...base, projects, ...overlay } as LocalDb;
   }, [scenario, overlay, factoryProjects]);
 
@@ -262,9 +292,20 @@ export function useScreen(): ScreenName {
   return useLocalDb().screen;
 }
 
+/**
+ * The scenario a prototype screen is showing. Only meaningful under
+ * `?state=` — the product has no scenario — so it reads as `settled`, the
+ * prototype's default, rather than making every prototype screen handle a
+ * null it can never be rendered with.
+ */
 export function useScenario() {
   const { scenario, setScenario } = useLocalDb();
-  return [scenario, setScenario] as const;
+  return [scenario ?? "settled", setScenario] as const;
+}
+
+/** True when `?state=` asked for the prototype, and fixtures may show. */
+export function usePrototype(): boolean {
+  return useLocalDb().scenario !== null;
 }
 
 /**
@@ -324,12 +365,16 @@ export function useLive() {
  * `stackHints` is not `layers`. The factory derives stack hints from the
  * workspace at registration ("node", "dotnet"); layers are spec-graph
  * layers, and a project with no specs yet genuinely has none.
+ *
+ * `org` is empty because `df.projects.list` does not carry one — a project
+ * has a team, not an org. It used to be filled from the fixture org, which
+ * put a made-up tenant on a real row.
  */
-function toProjectRow(project: FactoryProject, org: string): ProjectRow {
+function toProjectRow(project: FactoryProject): ProjectRow {
   return {
     id: project.id,
     name: project.name,
-    org,
+    org: "",
     node_count: 0,
     snapshot_id: "",
     layers: [],

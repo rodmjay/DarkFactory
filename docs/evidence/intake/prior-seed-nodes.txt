@@ -1,0 +1,69 @@
+clan | behavior | {"Text":"Establishing the base connects the player\u0027s circle to their clan\u0027s fence.","Rationale":null}
+clan | behavior | {"Text":"Once the player\u0027s circle is connected to the clan fence, the portal reaches the player.","Rationale":null}
+clan | behavior | {"Text":"Once the player\u0027s circle is connected to the clan fence, their clanmates\u0027 ground links to theirs.","Rationale":null}
+clan | constraint | {"Text":"A clan gives the player nothing that changes how a machine flies.","Rationale":null}
+clan | rule | {"Text":"A clan gives the player a colour.","Rationale":null}
+clan | rule | {"Text":"Rising in rank is how a drone stops belonging to the clan and becomes the player\u0027s own.","Rationale":null}
+clan | rule | {"Text":"A player chooses exactly one of the five clans \u2014 Lantern, Lodestone, Kiln, Brine, Compass \u2014 before play begins.","Rationale":null}
+clan | rule | {"Text":"A clan gives the player a style of stone.","Rationale":null}
+clan | rule | {"Text":"A clan gives the player a region.","Rationale":null}
+clan | rule | {"Text":"A clan gives the player one technology.","Rationale":null}
+flight | constraint | {"Text":"The flight invariant covers the autopilot, because the autopilot is how the game is normally flown.","Rationale":null}
+flight | constraint | {"Text":"Flying is simulated on the player\u0027s own machine and never waits for a server.","Rationale":null}
+flight | constraint | {"Text":"How it feels to fly is the project\u0027s invariant: a change that makes flying worse does not get built, whatever else it does.","Rationale":null}
+onboarding | behavior | {"Text":"The player is released above the world already flying, from the first second.","Rationale":null}
+onboarding | behavior | {"Text":"During the opening the player is always given a bearing and a distance to the target crop circle.","Rationale":"The mechanism is deliberately unresolved: whether a fitted finder part provides the bearing or the opening itself grants it is an open question about part loadout and socket competition, owned by the parts specifications in a later batch. The player-facing guarantee holds either way."}
+onboarding | behavior | {"Text":"Sweeping the ground with the lamp teaches the player the blacklight.","Rationale":null}
+onboarding | behavior | {"Text":"Flying down and around toward the circle teaches the player the controls.","Rationale":null}
+onboarding | behavior | {"Text":"Following a bearing that is not a line on a map teaches the player that this world does not hand out positions.","Rationale":null}
+onboarding | behavior | {"Text":"Finding the figure teaches the player what a crop circle is before anything defines it.","Rationale":null}
+onboarding | behavior | {"Text":"The last stretch of the approach to the crop circle is a real search, conducted under the blacklight.","Rationale":null}
+onboarding | behavior | {"Text":"Finding the crop circle establishes the player\u0027s base at that circle.","Rationale":null}
+onboarding | constraint | {"Text":"Establishing is a single transition \u2014 the circle exists, then the base exists, then the fence is recomputed \u2014 with no separate \u0022join the empire\u0022 state that can fall out of step.","Rationale":null}
+onboarding | constraint | {"Text":"The opening has no menu, no build step, and no cutscene the player cannot skip.","Rationale":null}
+onboarding | constraint | {"Text":"The drop point is chosen so that the player flies through terrain with texture rather than over five minutes of nothing; a drop whose flight is flat, empty ground is a failing drop, not a valid one.","Rationale":null}
+onboarding | constraint | {"Text":"None of the opening\u0027s texture is scripted.","Rationale":null}
+onboarding | constraint | {"Text":"A new player is never left with nothing to do.","Rationale":null}
+onboarding | constraint | {"Text":"No timer runs during the opening.","Rationale":null}
+onboarding | constraint | {"Text":"Nothing is consumed during the opening.","Rationale":null}
+onboarding | constraint | {"Text":"The first crop circle the player finds is the one they establish on; the player cannot choose between two circles.","Rationale":"The corpus records \u0022can a player refuse the circle they find and keep looking\u0022 as still open, with the current answer being no. Provisional."}
+onboarding | constraint | {"Text":"No code path produces a map position or marker for the target crop circle at any point in the opening.","Rationale":"A marker turns the first flight into travel; a bearing turns it into looking."}
+onboarding | constraint | {"Text":"The opening has no prompts, no objective list, no voice, and nothing for the player to dismiss.","Rationale":null}
+onboarding | constraint | {"Text":"Nothing threatens the player during the opening.","Rationale":null}
+onboarding | decision | {"Text":"The opening of the game is The First Flight, and consists of exactly five beats: dropped, fly toward it, find it, establish, welcomed.","Rationale":"Anchor node for the feature, so the opening is a shape in the graph rather than a single node."}
+onboarding | rule | {"Text":"Everything a player must learn during the opening is taught by something they need while doing it.","Rationale":null}
+onboarding | rule | {"Text":"A player who flies the wrong way during the opening can always recover, and may take as long as they need to reach the circle.","Rationale":null}
+onboarding | rule | {"Text":"The route from the drop gives the player a reason to change altitude.","Rationale":null}
+onboarding | rule | {"Text":"The game answers \u0022what am I supposed to do\u0022 on screen, as play goes on.","Rationale":null}
+onboarding | rule | {"Text":"The bearing and the distance continue to be given for as long as the crop circle is unfound.","Rationale":"Load-bearing: the corpus says the one thing that must never happen is a new player stuck with nothing to do. As above, the source of the bearing is left to the parts specifications."}
+onboarding | rule | {"Text":"The blacklight is fitted and working from the first second of the opening.","Rationale":null}
+onboarding | rule | {"Text":"The game displays exactly one instruction during the opening: find a crop circle.","Rationale":"The literal wording of the instruction is recorded by the corpus as still open."}
+onboarding | rule | {"Text":"The connection to the clan fence is visible to the player: the lines arrive and the map changes colour around them.","Rationale":null}
+onboarding | rule | {"Text":"During the opening flight the lamp finds things that are not the target circle, so the player learns what the lamp does on something that is not the objective.","Rationale":null}
+persistence | decision | {"Text":"Local play ships first and is not scaffolding: one player, one machine, a SQLite database in OPFS.","Rationale":null}
+persistence | interface | {"Text":"The \u0060WorldStore\u0060 interface is the seam through which a remote store replaces the local store as a swap rather than a rewrite.","Rationale":null}
+product | constraint | {"Text":"Drones is not a story the player reads.","Rationale":null}
+product | constraint | {"Text":"The playable scope is Earth only; the Moon, Mars and Venus are deferred, not cancelled.","Rationale":"Scope decided 2026-09-07."}
+product | constraint | {"Text":"Realism serves feel and loses to it where the two conflict; Drones is not a simulator.","Rationale":null}
+product | constraint | {"Text":"There are no friends lists, no guilds and no parties.","Rationale":null}
+product | constraint | {"Text":"Nothing in the game may be discoverable only by having already built it.","Rationale":null}
+product | constraint | {"Text":"Drones is not a survival game: there is no hunger, health or oxygen, and the player is never the thing at risk.","Rationale":null}
+product | constraint | {"Text":"The audience is strangers who find the game and play it with nobody to explain it.","Rationale":null}
+product | decision | {"Text":"The core loop is: fly out into ground that is black on the map; uncover it; survey with the blacklight, which shows what is inside rock and reveals cut glyphs; take material with laser and tractor beam; meet the machines of the other four clans; come home and pay tax at the depot; discover technology from glyphs and from the Forge; rise in rank; expand.","Rationale":"Deliberately coarser than the one-statement grain. It is an anchor so later batches have something to attach loop features to, and is expected to be narrowed or retired once those arrive. Accepted as coarse by the user."}
+product | decision | {"Text":"Drones plays solo, fully offline, as a first-class way to play rather than a demo.","Rationale":"Northstar states solo is not a demo."}
+product | decision | {"Text":"The game has two modes, Exploration and Domination.","Rationale":null}
+product | decision | {"Text":"Drones is an MMO: many players inhabit a single shared world.","Rationale":"Northstar: \u0022One world, shared by everybody.\u0022"}
+product | rule | {"Text":"A new game starts on Earth.","Rationale":null}
+product | rule | {"Text":"A solo world is private and never mixes with the shared world.","Rationale":null}
+product | rule | {"Text":"When the opening of the game competes with any later feature, the opening wins.","Rationale":"Northstar\u0027s \u0022the first two minutes outrank the fortieth feature\u0022 read as a priority statement, not a duration budget; kept numberless per the user\u0027s instruction."}
+world | constraint | {"Text":"For a thousand random seeds, a findable crop circle is within reach of the drop point.","Rationale":null}
+world | constraint | {"Text":"A world cannot be regenerated once players have built on it.","Rationale":null}
+world | constraint | {"Text":"For a thousand random seeds, the drop point is within five minutes\u0027 flight of a findable crop circle at the starting machine\u0027s real speed.","Rationale":"Five minutes is stated here because this is where it is testable. The corpus records as open whether five minutes holds once the drone is slower or faster."}
+world | interface | {"Text":"A \u0060rules/firstFlight.ts\u0060 module holds the seeded drop point and the guarantee that a crop circle is reachable from it; it is pure, seeded, and stores nothing.","Rationale":"Recorded by the corpus as a design note; kept because the purity and statelessness are checkable properties."}
+world | rule | {"Text":"In the shared world, ground uncovered by one player is uncovered for every player, not only for the one who flew it.","Rationale":"The approved wording dropped the \u0022in the shared world\u0022 qualifier the earlier draft carried. Unqualified, the node asserts collective uncovering everywhere, which contradicts the approved node 01M2DCM8HN0G2B5CSYQATC2C0K: a solo world is private and never mixes with the shared world, so ground uncovered there is uncovered only for the player who flew it. Restoring the qualifier scopes the claim to the shared world, where it is true and observable, and removes the contradiction. The solo case is left unstated rather than guessed at."}
+world | rule | {"Text":"Something of the world\u0027s history is visible but unexplained during the opening \u2014 another clan\u0027s colour on a far horizon, neither reachable nor explained.","Rationale":null}
+world | rule | {"Text":"A base belongs to exactly one player and to no one else.","Rationale":null}
+world | rule | {"Text":"The map is black until explored: map area is revealed only where somebody has actually flown.","Rationale":null}
+world | rule | {"Text":"Ground uncovered by a player is uncovered for every player, not only for the one who flew it.","Rationale":null}
+world | rule | {"Text":"The drop point is derived from the world seed: the same seed drops the player in the same place.","Rationale":null}
+world | rule | {"Text":"The route from the drop passes ground worth looking at: relief, water and weather.","Rationale":null}

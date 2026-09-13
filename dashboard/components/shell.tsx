@@ -15,18 +15,41 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, Moon, RefreshCw, Sun, WifiOff } from "lucide-react";
 
-import { cn, StatusChip, type StageStatus } from "@dark-factory/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  cn,
+  StatusChip,
+  type StageStatus,
+} from "@dark-factory/ui";
 
 import {
   LocalDbProvider,
   WIRED_SCREENS,
   useLive,
+  usePrototype,
   useQuery,
   useScenario,
   useScreen,
 } from "@/lib/local/store";
 import { SCENARIOS_FOR, SCENARIO_LABEL, type Scenario } from "@/lib/local/fixtures";
 import type { ScreenName } from "@/lib/local/schema";
+
+/** What each screen is called where a sentence has to name it. */
+const SCREEN_LABEL: Record<ScreenName, string> = {
+  conversation: "Conversation",
+  amendments: "Amendments",
+  specs: "Spec graph",
+  batches: "Batches and runs",
+  team: "Team",
+  servers: "Servers",
+  usage: "Usage",
+  projects: "Projects",
+};
 
 /** Route ↔ screen. The nav, the state strip and the ticker all read this. */
 const ROUTES: Record<ScreenName, string> = {
@@ -51,19 +74,28 @@ export function FactoryShell({ children }: { children: React.ReactNode }) {
   const params = useSearchParams();
   const screen = screenFromPath(pathname);
 
+  /**
+   * No `?state=` is the product, and the product shows no fixture row
+   * anywhere. The prototype is still one link away for design review, but
+   * it has to be asked for: a screen that fills itself with a made-up
+   * project's amendments by default is indistinguishable, to a new reader,
+   * from a factory that has them. An unrecognised value is not a request
+   * for the prototype either, so it falls to the product.
+   */
   const raw = params.get("state");
-  const scenario: Scenario = isScenario(raw) ? raw : "settled";
+  const scenario: Scenario | null = isScenario(raw) ? raw : null;
+  const showPage = scenario !== null || WIRED_SCREENS.includes(screen);
 
   /**
    * The scenario lives in the URL rather than in component state, so every
    * state on every screen is a link somebody can open, screenshot or file a
    * bug against — which is the difference between a state that is claimed
-   * and a state that is shown.
+   * and a state that is shown. `settled` is written out too: dropping the
+   * parameter now means leaving the prototype, not choosing its default.
    */
   const setScenario = React.useCallback(
     (next: Scenario) => {
-      const search = next === "settled" ? "" : `?state=${next}`;
-      router.replace(`${pathname}${search}`, { scroll: false });
+      router.replace(`${pathname}?state=${next}`, { scroll: false });
     },
     [pathname, router],
   );
@@ -73,10 +105,30 @@ export function FactoryShell({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen min-w-[1364px] flex-col overflow-hidden bg-page">
         <Header />
         <Ticker />
-        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
-        <StateStrip />
+        <div className="min-h-0 flex-1 overflow-auto">{showPage ? children : <NotWired />}</div>
+        {scenario !== null ? <StateStrip /> : null}
       </div>
     </LocalDbProvider>
+  );
+}
+
+/**
+ * Where a nav link goes. Inside the prototype it stays inside the prototype
+ * — a reviewer clicking from screen to screen should not fall out into the
+ * product halfway through — keeping the current scenario where the target
+ * screen offers it and its default where it does not.
+ */
+function useHref() {
+  const prototype = usePrototype();
+  const [scenario] = useScenario();
+
+  return React.useCallback(
+    (target: ScreenName) => {
+      if (!prototype) return ROUTES[target];
+      const state = SCENARIOS_FOR[target].includes(scenario) ? scenario : "settled";
+      return `${ROUTES[target]}?state=${state}`;
+    },
+    [prototype, scenario],
   );
 }
 
@@ -88,14 +140,24 @@ function isScenario(value: string | null): value is Scenario {
 
 function Header() {
   const screen = useScreen();
+  const prototype = usePrototype();
+  const href = useHref();
   const { org, project, actor } = useQuery((db) => ({
     org: db.org,
     project: db.project,
     actor: db.actor,
   }));
+  // Outside the prototype the mirror holds no amendments or batches — no
+  // factory query backs these counts yet — so the badges are absent rather
+  // than zero, by the same `> 0` rule that hides them on a quiet day.
   const awaiting = useQuery((db) => db.amendments.filter((a) => a.status === "proposed").length);
   const running = useQuery((db) => db.batches.filter((b) => b.status === "running").length);
   const deployable = useQuery((db) => db.batches.filter((b) => b.status === "deployable").length);
+
+  // The factory carries no org, so outside the prototype this is just the
+  // project's name — and nothing at all until the roster has answered,
+  // because a placeholder name in this slot is read as the answer.
+  const location = [org, project?.name].filter(Boolean).join(" / ");
 
   return (
     <header className="flex h-12 flex-none items-center gap-5 border-b border-border bg-card px-4">
@@ -103,22 +165,24 @@ function Header() {
         <span className="shrink-0 text-[13px] font-semibold tracking-tight whitespace-nowrap">
           Dark Factory
         </span>
-        <Link
-          href={ROUTES.projects}
-          className="flex h-[26px] shrink-0 items-center gap-1.5 rounded-control border border-border bg-sunken px-2 text-xs text-secondary whitespace-nowrap hover:bg-raised hover:text-primary"
-        >
-          {project ? `${org} / ${project.name}` : org}
-          <span className="text-[10px] text-muted">▾</span>
-        </Link>
+        {location ? (
+          <Link
+            href={href("projects")}
+            className="flex h-[26px] shrink-0 items-center gap-1.5 rounded-control border border-border bg-sunken px-2 text-xs text-secondary whitespace-nowrap hover:bg-raised hover:text-primary"
+          >
+            {location}
+            <span className="text-[10px] text-muted">▾</span>
+          </Link>
+        ) : null}
       </div>
 
       <nav className="flex items-center gap-0.5">
-        <Step n={1} label="Converse" href={ROUTES.conversation} active={screen === "conversation"} />
+        <Step n={1} label="Converse" href={href("conversation")} active={screen === "conversation"} />
         <Arrow />
         <Step
           n={2}
           label="Approve"
-          href={ROUTES.amendments}
+          href={href("amendments")}
           active={screen === "amendments"}
           badge={awaiting > 0 ? { text: String(awaiting), tone: "accent" } : undefined}
         />
@@ -126,7 +190,7 @@ function Header() {
         <Step
           n={3}
           label="Execute"
-          href={ROUTES.batches}
+          href={href("batches")}
           active={screen === "batches"}
           badge={running > 0 ? { text: String(running), tone: "running" } : undefined}
         />
@@ -134,7 +198,7 @@ function Header() {
         <Step
           n={4}
           label="Deploy"
-          href={ROUTES.batches}
+          href={href("batches")}
           badge={deployable > 0 ? { text: String(deployable), tone: "accent-quiet" } : undefined}
         />
       </nav>
@@ -142,20 +206,26 @@ function Header() {
       <div className="h-5 w-px bg-border" />
 
       <nav className="flex items-center gap-3.5 text-[13px]">
-        <Secondary label="Projects" href={ROUTES.projects} active={screen === "projects"} />
-        <Secondary label="Spec graph" href={ROUTES.specs} active={screen === "specs"} />
-        <Secondary label="Team" href={ROUTES.team} active={screen === "team"} />
-        <Secondary label="Servers" href={ROUTES.servers} active={screen === "servers"} />
-        <Secondary label="Usage" href={ROUTES.usage} active={screen === "usage"} />
+        <Secondary label="Projects" href={href("projects")} active={screen === "projects"} />
+        <Secondary label="Spec graph" href={href("specs")} active={screen === "specs"} />
+        <Secondary label="Team" href={href("team")} active={screen === "team"} />
+        <Secondary label="Servers" href={href("servers")} active={screen === "servers"} />
+        <Secondary label="Usage" href={href("usage")} active={screen === "usage"} />
       </nav>
 
       <div className="ml-auto flex items-center gap-2.5">
         <DataSource />
-        <SyncBadge />
+        {/* There is no sync service yet (ADR-0031), so "Synced" and the
+            actor's initials are both fixture claims — the second one a
+            named person. They belong to the prototype until the factory
+            can answer who is signed in and how current the mirror is. */}
+        {prototype ? <SyncBadge /> : null}
         <ThemeToggle />
-        <span className="inline-flex size-[26px] items-center justify-center rounded-pill border border-border bg-sunken text-[10px] font-semibold text-secondary">
-          {actor.initials}
-        </span>
+        {prototype ? (
+          <span className="inline-flex size-[26px] items-center justify-center rounded-pill border border-border bg-sunken text-[10px] font-semibold text-secondary">
+            {actor.initials}
+          </span>
+        ) : null}
       </div>
     </header>
   );
@@ -164,22 +234,36 @@ function Header() {
 /**
  * Where this screen's rows came from.
  *
- * Half the product reads the factory and half still reads fixtures, and a
- * reviewer cannot tell which by looking at a populated table. Saying it in
- * the header is cheaper than being asked, and the chip disappears screen by
- * screen as each one is wired.
+ * Half the product reads the factory and half has nothing to read yet, and
+ * a reviewer cannot tell which by looking at a populated table. Saying it in
+ * the header is cheaper than being asked. `?state=` is the one place
+ * fixtures still show, so it always says so there — on a wired screen too,
+ * because the prototype layers fixture sync state and fixture counts over
+ * whatever the factory returned.
  */
 function DataSource() {
   const screen = useScreen();
+  const prototype = usePrototype();
   const { live } = useLive();
+
+  if (prototype) {
+    return (
+      <span
+        title="Opened with ?state=, so this view shows prototype fixtures, not the factory."
+        className="rounded-pill border border-border bg-sunken px-2 py-0.5 text-[11px] font-medium text-muted whitespace-nowrap"
+      >
+        Prototype data
+      </span>
+    );
+  }
 
   if (!WIRED_SCREENS.includes(screen)) {
     return (
       <span
-        title="This screen still renders fixtures. It has not been wired to the factory yet."
+        title="This screen does not read the factory yet, so it has nothing to show."
         className="rounded-pill border border-border bg-sunken px-2 py-0.5 text-[11px] font-medium text-muted whitespace-nowrap"
       >
-        Prototype data
+        Not wired
       </span>
     );
   }
@@ -358,9 +442,12 @@ function ThemeToggle() {
 function Ticker() {
   const items = useQuery((db) => db.ticker);
   const screen = useScreen();
+  const href = useHref();
 
-  // The ticker reports the fixture project's runs. On a wired screen that
-  // would be a live-looking strip about a project the reader is not viewing.
+  // Nothing queries runs from the factory yet, so outside the prototype the
+  // ticker slice is empty and the strip does not render. Inside it, it
+  // reports the fixture project's runs — and on a wired screen that would
+  // be a live-looking strip about a project the reader is not viewing.
   if (WIRED_SCREENS.includes(screen)) return null;
   if (items.length === 0) return null;
 
@@ -373,7 +460,7 @@ function Ticker() {
         {items.map((item) => (
           <Link
             key={item.id}
-            href={ROUTES[item.screen]}
+            href={href(item.screen)}
             className="flex h-[22px] flex-none items-center gap-[7px] rounded-pill border border-border bg-card px-2 text-[11px] text-secondary whitespace-nowrap hover:border-border-strong"
           >
             <StatusChip status={item.status as StageStatus} compact />
@@ -394,10 +481,12 @@ function Ticker() {
  * This is scaffolding, and it is deliberately visible scaffolding: until a
  * sync service exists there is no way to *reach* the offline or parked
  * states from the product, and a state nobody can open is a state nobody
- * reviews. It comes out when PowerSync lands.
+ * reviews. It renders only under `?state=` — the product is not a place to
+ * advertise fixtures — and comes out entirely when PowerSync lands.
  */
 function StateStrip() {
   const screen = useScreen();
+  const pathname = usePathname();
   const [scenario, setScenario] = useScenario();
   const options = SCENARIOS_FOR[screen];
 
@@ -427,6 +516,55 @@ function StateStrip() {
       <span className="ml-auto text-[11px] text-muted">
         All eight screens · contracts in docs/screens/
       </span>
+      <Link href={pathname} className="text-[11px] text-secondary hover:text-primary">
+        Leave the prototype
+      </Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- not wired
+
+/**
+ * What an unwired screen shows in the product: that it is unwired.
+ *
+ * Not an empty state. "No amendments awaiting you" is a claim about the
+ * factory, and this screen has not asked the factory anything — so it names
+ * the gap instead of drawing either a fixture's rows or a zero it cannot
+ * back. The prototype underneath is still one explicit link away, because
+ * design review needs it and a link someone chose to open cannot be
+ * mistaken for the factory's answer.
+ */
+function NotWired() {
+  const screen = useScreen();
+  const pathname = usePathname();
+  const project = useQuery((db) => db.project);
+  const label = SCREEN_LABEL[screen];
+
+  return (
+    <div className="mx-auto max-w-xl px-6 py-16">
+      <Card>
+        <CardHeader>
+          <CardTitle>{label} is not wired to the factory yet</CardTitle>
+          <CardDescription>
+            This screen&rsquo;s data is not read from the factory yet, so there is nothing here to
+            show{project ? ` for ${project.name}` : ""}. It will fill in when the screen is wired to
+            the factory&rsquo;s own queries.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-3">
+          <Button size="sm" variant="outline" asChild>
+            <Link href={ROUTES.projects}>Open Projects</Link>
+          </Button>
+          <span className="text-2xs text-muted">Projects reads the factory today.</span>
+          <Link
+            href={`${pathname}?state=settled`}
+            className="ml-auto text-2xs text-secondary hover:text-primary"
+          >
+            View the prototype
+          </Link>
+        </CardContent>
+      </Card>
     </div>
   );
 }

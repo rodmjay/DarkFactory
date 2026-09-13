@@ -29,7 +29,11 @@ const nextConfig: NextConfig = {
    * that is ever wanted, it should be a reviewed change, not a side effect. */
   agentRules: false,
 
-  /* `/` sends the reader to step 1 of the four-step flow.
+  /* `/` sends the reader to the project roster — the one screen that reads
+   * the factory. It used to open step 1, the conversation, which is right
+   * once that screen is wired and wrong until then: with fixtures kept out
+   * of the product, the first thing anyone saw was a "not wired" panel.
+   * Point it back at `/conversation` in the commit that wires it.
    *
    * A routing-layer redirect rather than a page that calls `redirect()`.
    * A redirecting *page* is still a rendered React route: Next emits a
@@ -39,7 +43,7 @@ const nextConfig: NextConfig = {
    * redirect then asks for a stylesheet that 500s. This has no body at
    * all, which is what a redirect should be. */
   async redirects() {
-    return [{ source: "/", destination: "/conversation", permanent: false }];
+    return [{ source: "/", destination: "/projects", permanent: false }];
   },
 };
 
