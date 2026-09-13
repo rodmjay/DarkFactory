@@ -258,8 +258,8 @@ function Detail({ amendment }: { amendment: AmendmentRow }) {
                   : "awaiting",
             reason: decision.state === "rejected" ? decision.reason : undefined,
           }}
-          onApprove={() => dispatch("df.amendments.approve", { id: amendment.id })}
-          onReject={(reason) => dispatch("df.amendments.reject", { id: amendment.id, reason })}
+          onApprove={() => dispatch("df.specs.approve", { amendment_id: amendment.id })}
+          onReject={(reason) => dispatch("df.specs.reject", { amendment_id: amendment.id, reason })}
         />
       ) : null}
 

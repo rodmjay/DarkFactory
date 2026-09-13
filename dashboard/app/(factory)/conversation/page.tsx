@@ -89,6 +89,7 @@ export default function ConversationPage() {
 
 function ConversationList() {
   const conversations = useQuery((db) => db.conversations);
+  const projectId = useQuery((db) => db.project?.id ?? "");
   const dispatch = useDispatch();
 
   return (
@@ -98,7 +99,7 @@ function ConversationList() {
         <button
           type="button"
           title="New conversation"
-          onClick={() => dispatch("df.conversations.create")}
+          onClick={() => dispatch("df.conversations.start", { project_id: projectId })}
           className="inline-flex size-6 items-center justify-center rounded-control text-secondary hover:bg-sunken hover:text-primary"
         >
           <Plus aria-hidden className="size-3.5" />
@@ -262,9 +263,9 @@ function TurnPayloads({ payloads }: { payloads: Payload[] }) {
           <div key={index} className="flex flex-col gap-2">
             <ApprovalCard
               approval={approval}
-              onApprove={() => dispatch("df.amendments.approve", { id: payload.approval.target_id })}
+              onApprove={() => dispatch("df.specs.approve", { amendment_id: payload.approval.target_id })}
               onReject={(reason) =>
-                dispatch("df.amendments.reject", { id: payload.approval.target_id, reason })
+                dispatch("df.specs.reject", { amendment_id: payload.approval.target_id, reason })
               }
             />
             {decision.state === "undecided" ? (
@@ -328,11 +329,12 @@ function Initials({ children }: { children: React.ReactNode }) {
 function Composer() {
   const dispatch = useDispatch();
   const snapshot = useQuery((db) => db.project?.snapshot_id ?? "");
+  const conversationId = useQuery((db) => db.conversations[0]?.id ?? "");
   const [draft, setDraft] = React.useState("");
 
   function send() {
     if (!draft.trim()) return;
-    dispatch("df.conversations.send", { text: draft });
+    dispatch("df.conversations.turn", { conversation_id: conversationId, message: draft });
     setDraft("");
   }
 

@@ -27,22 +27,43 @@ import { buildDb, type Scenario } from "./fixtures";
  * ADR-0031 has no raw client writes: every invariant this system has —
  * append-only revisions, approval gates, budget checks — lives on the
  * other side of one of these.
+ *
+ * Split in two, and the split is the point. This list used to be twelve
+ * plausible-looking names of which five were real factory tools — the rest
+ * (`df.amendments.approve`, `df.runs.steer`, `df.conversations.send`…) were
+ * invented when the screens were built against fixtures, and nothing could
+ * tell the difference until someone tried to wire one. `pnpm check:commands`
+ * now asserts every name below is a tool the factory actually registers.
  */
-export const COMMANDS = [
-  "df.conversations.create",
-  "df.conversations.send",
-  "df.amendments.approve",
-  "df.amendments.reject",
-  "df.runs.answer",
-  "df.runs.steer",
+
+/** Tools the factory registers today. Names and argument shapes match `src/DarkFactory.Mcp/Tools`. */
+export const FACTORY_COMMANDS = [
+  "df.conversations.start",
+  "df.conversations.turn",
+  "df.specs.approve",
+  "df.specs.reject",
+  "df.work.steer",
+] as const;
+
+/**
+ * Actions the screens offer that no factory tool performs yet.
+ *
+ * Kept, typed separately, so a button can still be wired to its eventual
+ * name — but nothing can mistake one for a working call. When the factory
+ * grows the tool, the name moves up a list; `check:commands` fails until it
+ * does, so the promotion cannot be forgotten either.
+ */
+export const PENDING_COMMANDS = [
   "df.batches.compose",
-  "df.batches.reorder",
   "df.batches.deploy",
   "df.servers.authorize",
-  "df.servers.recheck",
   "df.team.raise_budget",
+  "df.team.hire",
 ] as const;
-export type Command = (typeof COMMANDS)[number];
+
+export type FactoryCommand = (typeof FACTORY_COMMANDS)[number];
+export type PendingCommand = (typeof PENDING_COMMANDS)[number];
+export type Command = FactoryCommand | PendingCommand;
 
 /**
  * How current the mirror is.
@@ -260,10 +281,10 @@ function applyCommand(
   current: Partial<LocalDb>,
 ): Partial<LocalDb> {
   switch (command) {
-    case "df.amendments.approve":
+    case "df.specs.approve":
       return { ...current, decision: { state: "approved" } };
 
-    case "df.amendments.reject":
+    case "df.specs.reject":
       return {
         ...current,
         decision: { state: "rejected", reason: String(args.reason ?? "") },

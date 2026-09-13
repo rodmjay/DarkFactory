@@ -126,7 +126,7 @@ export default function TeamPage() {
               role={listing.role}
               speed={listing.speed as "quick" | "balanced" | "deliberate"}
               onTeam={listing.state === "on_team"}
-              onInstall={() => dispatch("df.team.raise_budget", { persona: listing.name })}
+              onInstall={() => dispatch("df.team.hire", { persona: listing.name })}
             />
           ))}
         </div>

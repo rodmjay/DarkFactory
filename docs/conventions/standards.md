@@ -19,10 +19,14 @@ amended through conversation and approval; standards arrive from a server
 the factory does not own and cannot edit. Retrieval, not authorship, is the
 whole relationship — which is why every tool here is a read.
 
-Design principle: **retrieval-first**. A stage agent's real question is
-never "list everything you have", it is "what applies to *this*". Ranked
-retrieval scoped by layer is the primary call; enumeration exists for the
-dashboard and for cache warming, not for generation.
+Design principle: **the factory indexes; the server serves documents.**
+Per [ADR-0023](../adr/0023-index-standards-not-live-reads.md), the factory
+pulls a standards server's content with `list` and `get`, builds its own
+index, and retrieves from that — one retrieval per turn across every
+connected source, instead of one live call per server. So `list` and `get`
+are the calls a server must get right first. `query` is for everything that
+does *not* have an index of its own: a person in Claude Code, a script, a
+client that has not ingested. (Amended 2026-09-13; see ADR-0036.)
 
 ## `df.describe()`
 
@@ -102,8 +106,10 @@ own structure to make it machine-friendly.
 Every document's metadata and no bodies:
 `{ standards: [{ id, title, layers, status, updated }] }`.
 
-For the dashboard and for cache warming. It is not the retrieval path, and
-a server is free to make it the slow one.
+**This is the factory's ingest path.** It must be complete — every
+document, not a page — and every entry must carry `updated`, because that
+is how the factory tells which documents changed since it last ingested. A
+server may make it slower than `query`; it may not make it partial.
 
 ## Indexing
 

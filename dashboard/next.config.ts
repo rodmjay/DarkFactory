@@ -19,6 +19,16 @@ const nextConfig: NextConfig = {
    * packages/ui, which is outside it. Points at the workspace root. */
   outputFileTracingRoot: path.resolve(process.cwd(), ".."),
 
+  /* `next dev` otherwise writes dashboard/AGENTS.md and a dashboard/CLAUDE.md
+   * that imports it (`@AGENTS.md`) — which Claude Code then loads as project
+   * instructions for everything under dashboard/. The repository's agent
+   * contract is the root CLAUDE.md, curated on purpose; a third party's
+   * boilerplate joining it because a dev server started is not a decision
+   * anybody made. Both files were committed by accident in 5e244b1 and are
+   * removed alongside this. Next's own note recommends committing them; if
+   * that is ever wanted, it should be a reviewed change, not a side effect. */
+  agentRules: false,
+
   /* `/` sends the reader to step 1 of the four-step flow.
    *
    * A routing-layer redirect rather than a page that calls `redirect()`.

@@ -293,7 +293,7 @@ function RunPanel() {
                 variant="needs-you"
                 disabled={!steer.trim()}
                 onClick={() => {
-                  dispatch("df.runs.steer", { run_id: run.id, text: steer });
+                  dispatch("df.work.steer", { run_id: run.id, message: steer });
                   setSteer("");
                 }}
               >
