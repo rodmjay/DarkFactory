@@ -19,11 +19,25 @@ import "server-only";
  * that starts issuing session ids will break here rather than silently.
  */
 
+import http from "node:http";
+import https from "node:https";
+
+import type { Payload } from "@dark-factory/ui";
+
 const ENDPOINT = `${process.env.FACTORY_API_URL ?? "http://localhost:5100"}/mcp`;
 
 /** Registration runs a handshake and a conformance check against someone
  *  else's server, so it is not a fast call. */
 const TIMEOUT_MS = 30_000;
+
+/**
+ * An architect turn is a model call that may emit a whole spec diff, and
+ * the factory gives the gateway fifteen minutes (`AnthropicOptions.Timeout`).
+ * Giving up sooner here would abandon a reply the factory is still going to
+ * save — the next read would show it, and the reader would have been told
+ * it failed.
+ */
+export const TURN_TIMEOUT_MS = 15 * 60_000;
 
 export class FactoryError extends Error {
   constructor(
@@ -50,7 +64,11 @@ interface JsonRpcResponse {
  * shape the C# record serialized to. Both hops are unwrapped here so no
  * caller has to know the envelope exists.
  */
-export async function callTool<T>(tool: string, args: Record<string, unknown> = {}): Promise<T> {
+export async function callTool<T>(
+  tool: string,
+  args: Record<string, unknown> = {},
+  { timeoutMs = TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<T> {
   const body = JSON.stringify({
     jsonrpc: "2.0",
     id: 1,
@@ -58,33 +76,23 @@ export async function callTool<T>(tool: string, args: Record<string, unknown> = 
     params: { name: tool, arguments: args },
   });
 
-  let response: Response;
+  let response: { status: number; text: string };
   try {
-    response = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Streamable HTTP may answer as either, and the factory chooses SSE.
-        Accept: "application/json, text/event-stream",
-      },
-      body,
-      cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    response = await post(body, timeoutMs);
   } catch (cause) {
     throw new FactoryError(
       cause instanceof Error && cause.name === "TimeoutError"
-        ? `The factory did not answer ${tool} within ${TIMEOUT_MS / 1000}s.`
+        ? `The factory did not answer ${tool} within ${Math.round(timeoutMs / 1000)}s.`
         : "The factory is not reachable.",
       tool,
     );
   }
 
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new FactoryError(`The factory returned HTTP ${response.status}.`, tool);
   }
 
-  const payload = parse(await response.text());
+  const payload = parse(response.text);
 
   if (payload.error) throw new FactoryError(payload.error.message, tool);
 
@@ -106,6 +114,50 @@ export async function callTool<T>(tool: string, args: Record<string, unknown> = 
     // Not every tool returns JSON; a plain string is a legitimate result.
     return text as T;
   }
+}
+
+/**
+ * One POST, over `node:http` rather than `fetch`.
+ *
+ * Node's `fetch` gives up on a response whose headers take longer than five
+ * minutes, whatever abort signal it is handed, and an architect turn can
+ * take longer than that before the factory answers. That exact limit is
+ * what lost a turn in an earlier seeding session (docs/handoffs/0006). The
+ * timeout here is the only one, and it is the caller's.
+ */
+function post(body: string, timeoutMs: number): Promise<{ status: number; text: string }> {
+  const url = new URL(ENDPOINT);
+  const client = url.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const request = client.request(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Streamable HTTP may answer as either, and the factory chooses SSE.
+          Accept: "application/json, text/event-stream",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (response) => {
+        let text = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk: string) => (text += chunk));
+        response.on("end", () => resolve({ status: response.statusCode ?? 0, text }));
+        response.on("error", reject);
+      },
+    );
+
+    request.setTimeout(timeoutMs, () => {
+      const timeout = new Error(`No answer within ${timeoutMs}ms.`);
+      timeout.name = "TimeoutError";
+      request.destroy(timeout);
+    });
+    request.on("error", reject);
+    request.end(body);
+  });
 }
 
 /**
@@ -222,4 +274,85 @@ export interface FactoryTeamMember {
 
 export function projectTeam(projectId: string): Promise<FactoryTeamMember[]> {
   return callTool<FactoryTeamMember[]>("df.projects.team", { project_id: projectId });
+}
+
+// ----------------------------------------------------------- conversations
+
+/** `ConversationListItem` from `df.conversations.list` and `.get`. */
+export interface FactoryConversation {
+  id: string;
+  project_id: string;
+  title: string | null;
+  status: string;
+  /** `intake` for the thread an import files its proposals under (ADR-0037). */
+  kind: "conversation" | "intake";
+  turn_count: number;
+  amendments: number;
+  awaiting_amendments: number;
+  created_at: string;
+  updated_at: string;
+  /** The deployment the project's architect answers on; null with no team. */
+  deployment?: string | null;
+}
+
+/** `TurnView`: a turn's payloads exactly as the factory stored them. */
+export interface FactoryTurn {
+  id: string;
+  seq: number;
+  role: "user" | "assistant" | "system";
+  content: string;
+  /** Null on a human turn — its content is the whole of it. */
+  payloads?: Payload[] | null;
+  tokens?: number | null;
+  at: string;
+}
+
+export interface FactoryAmendmentState {
+  id: string;
+  status: "proposed" | "approved" | "rejected";
+  turn_id?: string | null;
+  created_at: string;
+  rejected_reason?: string | null;
+}
+
+export interface FactoryConversationDetail {
+  conversation: FactoryConversation;
+  turns: FactoryTurn[];
+  amendments: FactoryAmendmentState[];
+}
+
+export async function listConversations(projectId: string): Promise<FactoryConversation[]> {
+  return (await callTool<FactoryConversation[]>("df.conversations.list", { project_id: projectId })) ?? [];
+}
+
+export function getConversation(conversationId: string): Promise<FactoryConversationDetail> {
+  return callTool<FactoryConversationDetail>("df.conversations.get", { conversation_id: conversationId });
+}
+
+export function startConversation(
+  projectId: string,
+  title?: string,
+): Promise<{ id: string; project_id: string; title: string | null }> {
+  return callTool("df.conversations.start", { project_id: projectId, ...(title ? { title } : {}) });
+}
+
+/**
+ * One turn. The result is not used: the factory has persisted both turns
+ * (and any amendment) by the time this returns, and the thread is re-read
+ * from there so what the reader sees is what was saved.
+ */
+export async function sendTurn(conversationId: string, message: string): Promise<void> {
+  await callTool(
+    "df.conversations.turn",
+    { conversation_id: conversationId, message },
+    { timeoutMs: TURN_TIMEOUT_MS },
+  );
+}
+
+export async function approveAmendment(amendmentId: string): Promise<void> {
+  await callTool("df.specs.approve", { amendment_id: amendmentId });
+}
+
+export async function rejectAmendment(amendmentId: string, reason: string): Promise<void> {
+  await callTool("df.specs.reject", { amendment_id: amendmentId, reason });
 }

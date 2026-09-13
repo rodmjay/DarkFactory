@@ -17,8 +17,16 @@
 
 import {
   FactoryError,
+  approveAmendment,
+  getConversation,
+  listConversations,
   listProjects,
   registerProject,
+  rejectAmendment,
+  sendTurn,
+  startConversation,
+  type FactoryConversation,
+  type FactoryConversationDetail,
   type FactoryProject,
 } from "./mcp";
 
@@ -66,4 +74,37 @@ export async function registerProjectAction(
   }
 
   return attempt(() => registerProject(url, name?.trim() || undefined));
+}
+
+// ----------------------------------------------------------- conversations
+
+export async function loadConversations(projectId: string): Promise<Result<FactoryConversation[]>> {
+  return attempt(() => listConversations(projectId));
+}
+
+export async function loadConversation(conversationId: string): Promise<Result<FactoryConversationDetail>> {
+  return attempt(() => getConversation(conversationId));
+}
+
+export async function startConversationAction(
+  projectId: string,
+  title?: string,
+): Promise<Result<{ id: string }>> {
+  return attempt(() => startConversation(projectId, title?.trim() || undefined));
+}
+
+export async function sendTurnAction(conversationId: string, message: string): Promise<Result<void>> {
+  const text = message.trim();
+  if (text === "") return { ok: false, error: "A message cannot be empty." };
+  return attempt(() => sendTurn(conversationId, text));
+}
+
+export async function approveAction(amendmentId: string): Promise<Result<void>> {
+  return attempt(() => approveAmendment(amendmentId));
+}
+
+/** The factory records the reason with the rejection, so an empty one is refused here first. */
+export async function rejectAction(amendmentId: string, reason: string): Promise<Result<void>> {
+  if (reason.trim() === "") return { ok: false, error: "Say why it is being rejected." };
+  return attempt(() => rejectAmendment(amendmentId, reason.trim()));
 }

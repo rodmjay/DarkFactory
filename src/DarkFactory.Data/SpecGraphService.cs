@@ -98,6 +98,15 @@ public sealed class SpecGraphService(DarkFactoryDbContext db)
             At = now,
         };
         db.Provenance.Add(provenance);
+        db.Approvals.Add(new Approval
+        {
+            Id = Ulid.NewUlid(),
+            TargetType = ApprovalTargetType.Amendment,
+            TargetId = amendment.Id,
+            Decision = ApprovalDecision.Approved,
+            ApprovedBy = approvedBy,
+            CreatedAt = now,
+        });
 
         // A diff may create a node and an edge to it in the same amendment,
         // which it expresses as "new:0" — the node has no spec_id until
@@ -168,6 +177,21 @@ public sealed class SpecGraphService(DarkFactoryDbContext db)
         }
 
         amendment.Status = AmendmentStatus.Rejected;
+
+        // The approval card will not let anyone reject without a reason, and
+        // this used to discard it along with who gave it. A rejection whose
+        // reason is lost is one somebody has to argue again from memory.
+        db.Approvals.Add(new Approval
+        {
+            Id = Ulid.NewUlid(),
+            TargetType = ApprovalTargetType.Amendment,
+            TargetId = amendment.Id,
+            Decision = ApprovalDecision.Rejected,
+            ApprovedBy = rejectedBy,
+            Reason = reason,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
         await db.SaveChangesAsync(cancellationToken);
         return amendment;
     }

@@ -8,11 +8,16 @@
  * table, a clarifying form, a spec diff, an approval gate, a parked run's
  * timeline and a patch all arrive through the same renderer. That is the
  * whole reason the vocabulary exists, and this screen is where it earns it.
+ *
+ * Without `?state=` every row here is the factory's: the list from
+ * `df.conversations.list`, the thread from `df.conversations.get`, and each
+ * send, approve and reject a real call whose result is re-read rather than
+ * assumed. Under `?state=` it is the prototype, exactly as designed.
  */
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowDown, Plus } from "lucide-react";
+import { AlertTriangle, ArrowDown, Plus } from "lucide-react";
 
 import {
   ApprovalCard,
@@ -30,14 +35,16 @@ import {
 } from "@dark-factory/ui";
 import type { Payload } from "@dark-factory/ui";
 
-import { useDecision, useDispatch, useQuery } from "@/lib/local/store";
+import { useConversation, useDecision, useDispatch, usePrototype, useQuery } from "@/lib/local/store";
 import type { TurnRow } from "@/lib/local/schema";
 
 export default function ConversationPage() {
   const conversations = useQuery((db) => db.conversations);
-  const conversation = conversations[0];
+  const { activeId, error, dismissError } = useConversation();
+  const conversation = conversations.find((c) => c.id === activeId) ?? null;
   const turns = useQuery((db) => db.turns);
   const thinking = useQuery((db) => db.thinking);
+  const hasRetrieval = useQuery((db) => db.retrieval.length > 0);
   const [panelOpen, setPanelOpen] = React.useState(true);
 
   /* A conversation opens at its newest turn. Landing at the top means the
@@ -47,7 +54,7 @@ export default function ConversationPage() {
   React.useEffect(() => {
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [turns]);
+  }, [turns, thinking]);
 
   return (
     <div className="flex h-full min-h-0">
@@ -55,32 +62,46 @@ export default function ConversationPage() {
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-12 flex-none items-center gap-3 border-b border-border px-5">
-          <h1 className="text-sm font-semibold">{conversation.title}</h1>
-          <SpecId id={conversation.id} className="text-2xs" />
-          <span className="text-2xs text-muted">
-            {conversation.deployment} · {conversation.turn_count} turns
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto"
-            onClick={() => setPanelOpen((open) => !open)}
-          >
-            Context panel
-          </Button>
+          <h1 className="truncate text-sm font-semibold">{conversation?.title ?? "New conversation"}</h1>
+          {conversation ? (
+            <>
+              <SpecId id={conversation.id} className="text-2xs" />
+              <span className="shrink-0 text-2xs text-muted">
+                {conversation.deployment} · {conversation.turn_count} turns
+              </span>
+            </>
+          ) : null}
+          {/* The panel shows what the architect retrieved for a turn. Until
+              the factory returns that, a toggle for an empty panel is a
+              control that does nothing. */}
+          {hasRetrieval ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setPanelOpen((open) => !open)}
+            >
+              Context panel
+            </Button>
+          ) : null}
         </div>
 
         <div ref={threadRef} className="min-h-0 flex-1 overflow-auto px-5 py-5">
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
-            {turns.length === 0 ? <EmptyThread /> : turns.map((turn) => <Turn key={turn.id} turn={turn} />)}
+            {turns.length === 0 && !thinking ? (
+              <EmptyThread />
+            ) : (
+              turns.map((turn) => <Turn key={turn.id} turn={turn} />)
+            )}
             {thinking ? <Thinking /> : null}
+            {error ? <TurnError message={error} onDismiss={dismissError} /> : null}
           </div>
         </div>
 
         <Composer />
       </main>
 
-      {panelOpen ? <LookingAt /> : null}
+      {panelOpen && hasRetrieval ? <LookingAt /> : null}
     </div>
   );
 }
@@ -91,6 +112,14 @@ function ConversationList() {
   const conversations = useQuery((db) => db.conversations);
   const projectId = useQuery((db) => db.project?.id ?? "");
   const dispatch = useDispatch();
+  const prototype = usePrototype();
+  const { activeId, select, hydrated } = useConversation();
+  const [search, setSearch] = React.useState("");
+
+  const needle = search.trim().toLowerCase();
+  const shown = needle
+    ? conversations.filter((c) => c.title.toLowerCase().includes(needle))
+    : conversations;
 
   return (
     <aside className="flex w-60 flex-none flex-col border-r border-border bg-card">
@@ -99,7 +128,11 @@ function ConversationList() {
         <button
           type="button"
           title="New conversation"
-          onClick={() => dispatch("df.conversations.start", { project_id: projectId })}
+          // In the product a new conversation is created by its first
+          // message, so this only clears the thread to write one.
+          onClick={() =>
+            prototype ? dispatch("df.conversations.start", { project_id: projectId }) : select(null)
+          }
           className="inline-flex size-6 items-center justify-center rounded-control text-secondary hover:bg-sunken hover:text-primary"
         >
           <Plus aria-hidden className="size-3.5" />
@@ -108,17 +141,28 @@ function ConversationList() {
       </div>
 
       <div className="flex-none px-2.5 py-2.5">
-        <Input placeholder="Search conversations" className="h-8 text-xs" />
+        <Input
+          placeholder="Search conversations"
+          className="h-8 text-xs"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
-        {conversations.map((conversation, index) => (
+        {!hydrated ? (
+          <p className="px-2.5 py-2 text-2xs text-muted">Reading from the factory…</p>
+        ) : conversations.length === 0 ? (
+          <p className="px-2.5 py-2 text-2xs text-muted">No conversations yet.</p>
+        ) : null}
+        {shown.map((conversation) => (
           <button
             key={conversation.id}
             type="button"
+            onClick={() => select(conversation.id)}
             className={cn(
               "flex w-full flex-col gap-0.5 rounded-control px-2.5 py-2 text-left",
-              index === 0 ? "bg-sunken" : "hover:bg-sunken",
+              conversation.id === activeId ? "bg-sunken" : "hover:bg-sunken",
             )}
           >
             <span className="truncate text-xs font-medium text-primary">{conversation.title}</span>
@@ -133,6 +177,22 @@ function ConversationList() {
 // ----------------------------------------------------------------- thread
 
 function EmptyThread() {
+  const prototype = usePrototype();
+  const projectName = useQuery((db) => db.project?.name ?? "this project");
+
+  if (!prototype) {
+    return (
+      <div className="mx-auto flex max-w-xl flex-col gap-4 py-16 text-center">
+        <h2 className="text-lg font-medium text-primary">Ask the architect about {projectName}.</h2>
+        <p className="text-sm text-secondary">
+          It reads this project&apos;s specifications before every reply. When the conversation
+          settles on something concrete it proposes an amendment, and nothing changes the graph
+          until someone approves it.
+        </p>
+      </div>
+    );
+  }
+
   const suggestions = [
     "What governs renewal today?",
     "Where has the code drifted from the graph?",
@@ -165,13 +225,30 @@ function EmptyThread() {
 }
 
 function Thinking() {
+  const prototype = usePrototype();
+
   return (
     <div className="flex items-center gap-2.5">
       <Initials>AR</Initials>
       <span className="flex items-center gap-2 text-xs text-secondary">
         <span aria-hidden className="size-1.5 rounded-pill bg-accent breathe" />
-        Traversing the spec neighbourhood — 3 layers routed, 2 standards servers consulted
+        {prototype
+          ? "Traversing the spec neighbourhood — 3 layers routed, 2 standards servers consulted"
+          : "Reading the specifications and writing a reply. A reply that proposes an amendment can take a few minutes."}
       </span>
+    </div>
+  );
+}
+
+/** A send, approve or reject the factory refused, in its own words. */
+function TurnError({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div className="flex items-start gap-3 rounded-card border border-status-failed-border bg-status-failed-fill px-4 py-3">
+      <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-status-failed-text" />
+      <p className="min-w-0 flex-1 text-sm text-status-failed-text">{message}</p>
+      <Button size="sm" variant="ghost" className="shrink-0" onClick={onDismiss}>
+        Dismiss
+      </Button>
     </div>
   );
 }
@@ -192,7 +269,7 @@ function HumanTurn({ turn }: { turn: TurnRow }) {
           turn.pending ? "border-dashed border-border-strong bg-sunken" : "border-border bg-card",
         )}
       >
-        <p className="text-sm text-primary">{text}</p>
+        <p className="text-sm whitespace-pre-wrap text-primary">{text}</p>
         <span className="text-2xs text-muted">
           {turn.author_name} · {turn.pending ? "sending…" : format.at(turn.at)}
         </span>
@@ -218,7 +295,8 @@ function AgentTurn({ turn }: { turn: TurnRow }) {
             <>
               <span className="text-xs font-medium text-primary">{turn.author_name}</span>
               <span className="text-2xs text-muted">
-                {turn.deployment} · {format.at(turn.at)}
+                {turn.deployment ? `${turn.deployment} · ` : ""}
+                {format.at(turn.at)}
               </span>
             </>
           )}
@@ -236,10 +314,14 @@ function AgentTurn({ turn }: { turn: TurnRow }) {
  * Everything goes through `PayloadRenderer` except the approval gate, which
  * needs handlers this screen owns — approving is a `df.*` command, not a
  * visual state. The design system draws it; the app decides what it means.
+ *
+ * In the product the card's status is the amendment's, read back from the
+ * factory after every decision. The prototype keeps its one local decision.
  */
 function TurnPayloads({ payloads }: { payloads: Payload[] }) {
   const dispatch = useDispatch();
   const decision = useDecision();
+  const prototype = usePrototype();
 
   return (
     <div className="flex flex-col gap-4">
@@ -248,16 +330,18 @@ function TurnPayloads({ payloads }: { payloads: Payload[] }) {
           return <PayloadRenderer key={index} payloads={[payload]} />;
         }
 
-        const approval = {
-          ...payload.approval,
-          status:
-            decision.state === "approved"
-              ? ("approved" as const)
-              : decision.state === "rejected"
-                ? ("rejected" as const)
-                : ("awaiting" as const),
-          reason: decision.state === "rejected" ? decision.reason : undefined,
-        };
+        const approval = prototype
+          ? {
+              ...payload.approval,
+              status:
+                decision.state === "approved"
+                  ? ("approved" as const)
+                  : decision.state === "rejected"
+                    ? ("rejected" as const)
+                    : ("awaiting" as const),
+              reason: decision.state === "rejected" ? decision.reason : undefined,
+            }
+          : payload.approval;
 
         return (
           <div key={index} className="flex flex-col gap-2">
@@ -268,24 +352,42 @@ function TurnPayloads({ payloads }: { payloads: Payload[] }) {
                 dispatch("df.specs.reject", { amendment_id: payload.approval.target_id, reason })
               }
             />
-            {decision.state === "undecided" ? (
-              <p className="text-2xs text-muted">
-                Approving queues it into the backlog, not into a run.
-              </p>
-            ) : null}
-            {decision.state === "approved" ? (
-              <div className="flex items-center gap-2 text-2xs text-muted">
-                <span>Amendment is in the backlog. It enters a run when someone batches it.</span>
-                <Link href="/batches" className="text-accent-text hover:underline">
-                  Open backlog
-                </Link>
-              </div>
-            ) : null}
+            {prototype ? <PrototypeDecisionNote /> : <DecisionNote status={approval.status} />}
           </div>
         );
       })}
     </div>
   );
+}
+
+/** What approving does today: `df.specs.approve` applies the amendment to the graph. */
+function DecisionNote({ status }: { status: "awaiting" | "approved" | "rejected" }) {
+  if (status === "awaiting") {
+    return <p className="text-2xs text-muted">Approving applies it to the spec graph.</p>;
+  }
+  if (status === "approved") {
+    return <p className="text-2xs text-muted">Applied to the spec graph.</p>;
+  }
+  return null;
+}
+
+function PrototypeDecisionNote() {
+  const decision = useDecision();
+
+  if (decision.state === "undecided") {
+    return <p className="text-2xs text-muted">Approving queues it into the backlog, not into a run.</p>;
+  }
+  if (decision.state === "approved") {
+    return (
+      <div className="flex items-center gap-2 text-2xs text-muted">
+        <span>Amendment is in the backlog. It enters a run when someone batches it.</span>
+        <Link href="/batches?state=settled" className="text-accent-text hover:underline">
+          Open backlog
+        </Link>
+      </div>
+    );
+  }
+  return null;
 }
 
 /** Tokens this turn, against the last one. A number with no comparison is
@@ -328,13 +430,16 @@ function Initials({ children }: { children: React.ReactNode }) {
 
 function Composer() {
   const dispatch = useDispatch();
+  const prototype = usePrototype();
   const snapshot = useQuery((db) => db.project?.snapshot_id ?? "");
-  const conversationId = useQuery((db) => db.conversations[0]?.id ?? "");
+  const { activeId, busy } = useConversation();
   const [draft, setDraft] = React.useState("");
 
+  const canSend = draft.trim() !== "" && !busy;
+
   function send() {
-    if (!draft.trim()) return;
-    dispatch("df.conversations.turn", { conversation_id: conversationId, message: draft });
+    if (!canSend) return;
+    dispatch("df.conversations.turn", { conversation_id: activeId ?? "", message: draft });
     setDraft("");
   }
 
@@ -351,12 +456,24 @@ function Composer() {
           className="min-h-[68px] resize-none"
         />
         <div className="flex items-center gap-3 text-2xs text-muted">
-          <span className="flex items-center gap-1">
-            snapshot <SpecId id={snapshot} />
-          </span>
-          <span>Retrieval scoped to product, data, api · 2 standards servers indexed</span>
+          {prototype ? (
+            <>
+              <span className="flex items-center gap-1">
+                snapshot <SpecId id={snapshot} />
+              </span>
+              <span>Retrieval scoped to product, data, api · 2 standards servers indexed</span>
+            </>
+          ) : (
+            <span>
+              {busy
+                ? "Waiting for the architect's reply."
+                : activeId
+                  ? "The architect replies with the project's specifications in front of it."
+                  : "Your first message starts a new conversation."}
+            </span>
+          )}
           <span className="ml-auto">⌘↵ to send</span>
-          <Button size="sm" variant="needs-you" onClick={send} disabled={!draft.trim()}>
+          <Button size="sm" variant="needs-you" onClick={send} disabled={!canSend}>
             Send
           </Button>
         </div>

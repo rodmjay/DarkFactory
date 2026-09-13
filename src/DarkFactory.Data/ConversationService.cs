@@ -44,6 +44,22 @@ public sealed record ConversationTurnResult(
     string ContextRef,
     ModelUsage Usage);
 
+/// <summary>A conversation as a list shows it: enough to say where it stands without opening it.</summary>
+public sealed record ConversationListing(
+    Conversation Conversation,
+    int TurnCount,
+    DateTimeOffset UpdatedAt,
+    int Amendments,
+    int AwaitingAmendments,
+    bool IsIntake);
+
+/// <summary>Where one of a conversation's amendments stands, and why, if it was refused.</summary>
+public sealed record AmendmentState(
+    string Id, AmendmentStatus Status, string? TurnId, DateTimeOffset CreatedAt, string? RejectedReason);
+
+public sealed record ConversationThread(
+    ConversationListing Listing, IReadOnlyList<Turn> Turns, IReadOnlyList<AmendmentState> Amendments);
+
 /// <summary>
 /// The conversation (docs/adr/0017) — the product, not a job-submission
 /// surface. One user turn in, one architect turn out, and possibly a
@@ -95,6 +111,109 @@ public sealed class ConversationService(
         db.Conversations.Add(conversation);
         await db.SaveChangesAsync(cancellationToken);
         return conversation;
+    }
+
+    // ---- reads ------------------------------------------------------------
+
+    /// <summary>A project's conversations, most recently active first.</summary>
+    public async Task<IReadOnlyList<ConversationListing>> ListAsync(
+        string projectId, CancellationToken cancellationToken = default)
+    {
+        var conversations = await db.Conversations.AsNoTracking()
+            .Where(c => c.ProjectId == projectId)
+            .ToListAsync(cancellationToken);
+
+        return (await ListingsAsync(conversations, cancellationToken))
+            .OrderByDescending(l => l.UpdatedAt)
+            .ThenByDescending(l => l.Conversation.Id)
+            .ToList();
+    }
+
+    /// <summary>
+    /// One conversation's whole thread: every turn with the payloads it was
+    /// stored with, and where each amendment it produced stands now. The
+    /// payloads are returned as written rather than rebuilt, so a thread
+    /// reads back exactly as it was answered.
+    /// </summary>
+    public async Task<ConversationThread> GetAsync(string conversationId, CancellationToken cancellationToken = default)
+    {
+        var conversation = await db.Conversations.AsNoTracking()
+            .SingleOrDefaultAsync(c => c.Id == conversationId, cancellationToken)
+            ?? throw new InvalidOperationException($"No conversation '{conversationId}'.");
+
+        var turns = await db.Turns.AsNoTracking()
+            .Where(t => t.ConversationId == conversationId)
+            .OrderBy(t => t.Seq)
+            .ToListAsync(cancellationToken);
+
+        var amendments = await db.Amendments.AsNoTracking()
+            .Where(a => a.ConversationId == conversationId)
+            .OrderBy(a => a.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var ids = amendments.Select(a => a.Id).ToList();
+        var rejections = await db.Approvals.AsNoTracking()
+            .Where(a => a.TargetType == ApprovalTargetType.Amendment
+                && a.Decision == ApprovalDecision.Rejected
+                && ids.Contains(a.TargetId))
+            .ToListAsync(cancellationToken);
+
+        var listing = (await ListingsAsync([conversation], cancellationToken)).Single();
+        return new ConversationThread(
+            listing,
+            turns,
+            amendments.Select(a => new AmendmentState(
+                a.Id,
+                a.Status,
+                a.TurnId,
+                a.CreatedAt,
+                rejections.Where(r => r.TargetId == a.Id).OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Reason))
+                .ToList());
+    }
+
+    private async Task<List<ConversationListing>> ListingsAsync(
+        IReadOnlyList<Conversation> conversations, CancellationToken cancellationToken)
+    {
+        var ids = conversations.Select(c => c.Id).ToList();
+
+        var turns = await db.Turns.AsNoTracking()
+            .Where(t => ids.Contains(t.ConversationId))
+            .GroupBy(t => t.ConversationId)
+            .Select(g => new { ConversationId = g.Key, Count = g.Count(), Last = g.Max(t => t.CreatedAt) })
+            .ToListAsync(cancellationToken);
+
+        var amendments = await db.Amendments.AsNoTracking()
+            .Where(a => ids.Contains(a.ConversationId))
+            .Select(a => new { a.ConversationId, a.Status, a.CreatedAt })
+            .ToListAsync(cancellationToken);
+
+        // An intake's conversation is the thread its proposals are filed
+        // under (docs/adr/0037). It is listed like any other, but a reader
+        // needs to know it is an import rather than a discussion.
+        var intakes = (await db.Intakes.AsNoTracking()
+            .Where(i => ids.Contains(i.ConversationId))
+            .Select(i => i.ConversationId)
+            .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+
+        return conversations.Select(c =>
+        {
+            var t = turns.FirstOrDefault(x => x.ConversationId == c.Id);
+            var mine = amendments.Where(a => a.ConversationId == c.Id).ToList();
+            var updated = new[]
+            {
+                c.CreatedAt,
+                t?.Last ?? c.CreatedAt,
+                mine.Count == 0 ? c.CreatedAt : mine.Max(a => a.CreatedAt),
+            }.Max();
+
+            return new ConversationListing(
+                c,
+                t?.Count ?? 0,
+                updated,
+                mine.Count,
+                mine.Count(a => a.Status == AmendmentStatus.Proposed),
+                intakes.Contains(c.Id));
+        }).ToList();
     }
 
     public async Task<ConversationTurnResult> TurnAsync(

@@ -8,18 +8,42 @@
  * is exactly the shape PowerSync gives us: reads come from local SQLite,
  * writes go to the backend connector and come back as synced rows.
  *
- * Until the sync service exists, `LocalDbProvider` holds the mirror in
- * memory and applies each command's optimistic effect locally, marking the
- * write pending the way a real checkpoint would. Wiring PowerSync is
- * therefore a change *in this file*: `useQuery` becomes a SQL query and
+ * Until the sync service exists, `LocalDbProvider` hydrates the wired
+ * slices from the factory through server actions, and sends each command
+ * to the factory and re-reads what it touched — the way a real checkpoint
+ * would bring the rows back. Under `?state=` it instead applies each
+ * command's optimistic effect to the prototype's fixtures. Wiring PowerSync
+ * is therefore a change *in this file*: `useQuery` becomes a SQL query and
  * `dispatch` becomes a connector call, and not one screen moves.
  */
 
 import * as React from "react";
 
-import { loadProjects, registerProjectAction } from "../factory/actions";
-import type { FactoryProject } from "../factory/mcp";
-import type { DecisionRow, LocalDb, ProjectRow, ScreenName } from "./schema";
+import { format, type Payload } from "@dark-factory/ui";
+
+import {
+  approveAction,
+  loadConversation,
+  loadConversations,
+  loadProjects,
+  registerProjectAction,
+  rejectAction,
+  sendTurnAction,
+  startConversationAction,
+} from "../factory/actions";
+import type {
+  FactoryConversation,
+  FactoryConversationDetail,
+  FactoryProject,
+} from "../factory/mcp";
+import type {
+  ConversationRow,
+  DecisionRow,
+  LocalDb,
+  ProjectRow,
+  ScreenName,
+  TurnRow,
+} from "./schema";
 import { buildDb, type Scenario } from "./fixtures";
 
 /**
@@ -66,15 +90,6 @@ export type PendingCommand = (typeof PENDING_COMMANDS)[number];
 export type Command = FactoryCommand | PendingCommand;
 
 /**
- * How current the mirror is.
- *
- * `hydrating` is the honest state on first paint: the mirror is showing
- * whatever it has while the factory is being asked. `unreachable` is not a
- * silent fall back to fixtures — a screen that cannot reach the factory
- * says so, because a stale roster presented as live is worse than no
- * roster.
- */
-/**
  * The screens whose data comes from the factory.
  *
  * Everything else is not read from the factory yet. By default the shell
@@ -84,12 +99,39 @@ export type Command = FactoryCommand | PendingCommand;
  * this list is the progress bar, and it is in the code rather than in a
  * document that would drift from it.
  */
-export const WIRED_SCREENS: ScreenName[] = ["projects"];
+export const WIRED_SCREENS: ScreenName[] = ["projects", "conversation"];
 
+/**
+ * How current the mirror is.
+ *
+ * `hydrating` is the honest state on first paint: the mirror is showing
+ * whatever it has while the factory is being asked. `unreachable` is not a
+ * silent fall back to fixtures — a screen that cannot reach the factory
+ * says so, because a stale roster presented as live is worse than no
+ * roster.
+ */
 export type LiveState =
   | { status: "hydrating" }
   | { status: "live" }
   | { status: "unreachable"; error: string };
+
+/**
+ * Which conversation is on screen, and what went wrong with the last thing
+ * sent. Not a mirror table: it is the reader's own position in the data,
+ * which PowerSync would not sync either.
+ */
+export interface ConversationControls {
+  /** The conversation on screen, or null while composing a new one. */
+  activeId: string | null;
+  /** Null starts a new conversation; it is created by the first message, not before. */
+  select: (id: string | null) => void;
+  error: string | null;
+  dismissError: () => void;
+  /** False until the factory has answered with this project's conversations. */
+  hydrated: boolean;
+  /** A turn is in flight somewhere; the composer waits for it. */
+  busy: boolean;
+}
 
 interface LocalDbContextValue {
   db: LocalDb;
@@ -104,9 +146,10 @@ interface LocalDbContextValue {
   setScenario: (scenario: Scenario) => void;
   live: LiveState;
   /** Which slices of the mirror are real rather than fixtures. */
-  isLive: (slice: "projects") => boolean;
+  isLive: (slice: "projects" | "conversations") => boolean;
   refresh: () => void;
   register: (url: string, name?: string) => Promise<{ ok: boolean; error?: string }>;
+  conversation: ConversationControls;
 }
 
 const LocalDbContext = React.createContext<LocalDbContextValue | null>(null);
@@ -123,20 +166,17 @@ export function LocalDbProvider({
   children: React.ReactNode;
 }) {
   /**
-   * Local edits layered over the fixture mirror. A real connector would
-   * write these through a command and let the row come back down the sync
-   * stream; holding them here keeps the call sites identical either way.
+   * Local edits layered over the fixture mirror, under `?state=` only. The
+   * product sends its commands to the factory and re-reads instead.
    */
   const [overlay, setOverlay] = React.useState<Partial<LocalDb>>({});
 
   /**
    * The projects slice, hydrated from the factory.
    *
-   * `df.projects.list` is a real query against a real database, so this is
-   * the first part of the mirror that is not a fixture. It is held
-   * separately from the overlay because a scenario change must not discard
-   * it — the roster is a fact about the org, not about which state a
-   * reviewer is looking at.
+   * It is held separately from the overlay because a scenario change must
+   * not discard it — the roster is a fact about the org, not about which
+   * state a reviewer is looking at.
    */
   const [factoryProjects, setFactoryProjects] = React.useState<ProjectRow[] | null>(null);
   const [live, setLive] = React.useState<LiveState>({ status: "hydrating" });
@@ -193,21 +233,156 @@ export function LocalDbProvider({
     [refresh],
   );
 
+  // ------------------------------------------------------ conversations
+
+  /**
+   * The project being worked in. There is no switcher yet because the org
+   * has one project; when there are several, this is what it will set.
+   */
+  const projectId = factoryProjects?.[0]?.id ?? null;
+
+  const [factoryConversations, setFactoryConversations] = React.useState<ConversationRow[] | null>(null);
+  /** Null means "whatever is newest". `{ id: null }` means a new, unsent conversation. */
+  const [selected, setSelected] = React.useState<{ id: string | null } | null>(null);
+  const [thread, setThread] = React.useState<{ id: string; turns: TurnRow[] } | null>(null);
+  const [pendingTurn, setPendingTurn] = React.useState<TurnRow | null>(null);
+  /** The conversation a turn is in flight in, so its thread — and only its — shows the wait. */
+  const [thinkingIn, setThinkingIn] = React.useState<string | null>(null);
+  const [conversationError, setConversationError] = React.useState<string | null>(null);
+
+  const activeId = selected ? selected.id : (factoryConversations?.[0]?.id ?? null);
+
+  React.useEffect(() => {
+    if (projectId === null) return;
+    let cancelled = false;
+    loadConversations(projectId).then((result) => {
+      if (cancelled) return;
+      if (result.ok) setFactoryConversations(result.data.map(toConversationRow));
+      else setConversationError(result.error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  React.useEffect(() => {
+    if (activeId === null) return;
+    let cancelled = false;
+    loadConversation(activeId).then((result) => {
+      if (cancelled) return;
+      if (result.ok) setThread({ id: activeId, turns: toTurnRows(result.data) });
+      else setConversationError(result.error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
+
+  const reloadConversations = React.useCallback(async (id: string) => {
+    const result = await loadConversations(id);
+    if (result.ok) setFactoryConversations(result.data.map(toConversationRow));
+  }, []);
+
+  const reloadThread = React.useCallback(async (id: string) => {
+    const result = await loadConversation(id);
+    if (result.ok) setThread({ id, turns: toTurnRows(result.data) });
+    else setConversationError(result.error);
+  }, []);
+
+  /**
+   * A command, sent to the factory. Nothing is applied locally except the
+   * human turn while it is in flight: every other effect — the reply, an
+   * amendment, an approval — is the factory's to decide, so the screen
+   * re-reads what it saved rather than guessing.
+   */
+  const runCommand = React.useCallback(
+    async (command: Command, args: Record<string, unknown>) => {
+      if (projectId === null) return;
+      setConversationError(null);
+
+      switch (command) {
+        case "df.conversations.start": {
+          const result = await startConversationAction(
+            projectId,
+            typeof args.title === "string" ? args.title : undefined,
+          );
+          if (!result.ok) return setConversationError(result.error);
+          setSelected({ id: result.data.id });
+          await reloadConversations(projectId);
+          return;
+        }
+
+        case "df.conversations.turn": {
+          const message = String(args.message ?? "").trim();
+          if (message === "") return;
+
+          // A new conversation is created by its first message, so the
+          // list never fills with empty threads somebody opened and left.
+          let id = typeof args.conversation_id === "string" && args.conversation_id ? args.conversation_id : null;
+          if (id === null) {
+            const started = await startConversationAction(projectId, titleFrom(message));
+            if (!started.ok) return setConversationError(started.error);
+            id = started.data.id;
+            setSelected({ id });
+            // Listed now, not after the reply: a first turn can take
+            // minutes, and the list saying "no conversations" meanwhile
+            // contradicts the thread beside it.
+            await reloadConversations(projectId);
+          }
+
+          setPendingTurn(pendingHumanTurn(id, message));
+          setThinkingIn(id);
+          const result = await sendTurnAction(id, message);
+          setThinkingIn(null);
+          setPendingTurn(null);
+          if (!result.ok) setConversationError(result.error);
+
+          await reloadThread(id);
+          await reloadConversations(projectId);
+          return;
+        }
+
+        case "df.specs.approve":
+        case "df.specs.reject": {
+          const amendmentId = String(args.amendment_id ?? "");
+          const result =
+            command === "df.specs.approve"
+              ? await approveAction(amendmentId)
+              : await rejectAction(amendmentId, String(args.reason ?? ""));
+          if (!result.ok) setConversationError(result.error);
+
+          if (activeId !== null) await reloadThread(activeId);
+          await reloadConversations(projectId);
+          return;
+        }
+
+        default:
+          // Pending commands have no factory tool yet, and `df.work.steer`
+          // is not reachable from a wired screen. Nothing to send.
+          return;
+      }
+    },
+    [projectId, activeId, reloadConversations, reloadThread],
+  );
+
   const db = React.useMemo(() => {
     if (scenario === null) {
       // The product. Every slice anything on screen reads without `?state=`
       // is either the factory's answer or empty: the roster and the current
-      // project come from `df.projects.list`, and nothing arrives before it
-      // has answered. The factory carries no org, so there is none to show,
-      // and the counts and the ticker are empty because no factory query
-      // backs them yet — which is also what makes the header's badges and
-      // the ticker disappear, by their own rules rather than by a special
-      // case.
+      // project from `df.projects.list`, the conversation list and thread
+      // from `df.conversations.*`. The factory carries no org, so there is
+      // none to show, and the counts and the ticker are empty because no
+      // factory query backs them yet — which is also what makes the header's
+      // badges and the ticker disappear, by their own rules rather than by
+      // a special case.
       //
       // The remaining slices are still the fixture base, because `LocalDb`
       // has no empty value for most of them. Nothing reads them here: the
       // shell renders an unwired screen as a gap, not as its page.
       const projects = factoryProjects ?? [];
+      const turns = thread !== null && thread.id === activeId ? thread.turns : [];
+      const pending = pendingTurn !== null && pendingTurn.conversation_id === activeId ? [pendingTurn] : [];
+
       return {
         ...buildDb("settled"),
         org: "",
@@ -216,7 +391,11 @@ export function LocalDbProvider({
         ticker: [],
         amendments: [],
         batches: [],
-        ...overlay,
+        conversations: factoryConversations ?? [],
+        turns: [...turns, ...pending],
+        retrieval: [],
+        thinking: thinkingIn !== null && thinkingIn === activeId,
+        decision: { state: "undecided" },
       } as LocalDb;
     }
 
@@ -233,13 +412,17 @@ export function LocalDbProvider({
     // are showing their prototypes, and putting a real project's name above
     // fixture counts would be the one thing this seam exists to prevent.
     return { ...base, projects, ...overlay } as LocalDb;
-  }, [scenario, overlay, factoryProjects]);
+  }, [scenario, overlay, factoryProjects, factoryConversations, thread, activeId, pendingTurn, thinkingIn]);
 
   const dispatch = React.useCallback(
     (command: Command, args: Record<string, unknown> = {}) => {
+      if (scenario === null) {
+        void runCommand(command, args);
+        return;
+      }
       setOverlay((current) => applyCommand(command, args, current));
     },
-    [],
+    [scenario, runCommand],
   );
 
   // A scenario change is a different mirror, so local edits over the old one
@@ -253,13 +436,41 @@ export function LocalDbProvider({
   );
 
   const isLive = React.useCallback(
-    (slice: "projects") => slice === "projects" && factoryProjects !== null,
-    [factoryProjects],
+    (slice: "projects" | "conversations") =>
+      slice === "projects" ? factoryProjects !== null : factoryConversations !== null,
+    [factoryProjects, factoryConversations],
+  );
+
+  const prototypeConversationId = db.conversations[0]?.id ?? null;
+  const conversation = React.useMemo<ConversationControls>(
+    () =>
+      scenario === null
+        ? {
+            activeId,
+            select: (id) => {
+              setConversationError(null);
+              setSelected({ id });
+            },
+            error: conversationError,
+            dismissError: () => setConversationError(null),
+            hydrated: factoryConversations !== null,
+            busy: thinkingIn !== null,
+          }
+        : {
+            // The prototype's thread is always its first conversation.
+            activeId: prototypeConversationId,
+            select: () => {},
+            error: null,
+            dismissError: () => {},
+            hydrated: true,
+            busy: false,
+          },
+    [scenario, activeId, conversationError, factoryConversations, thinkingIn, prototypeConversationId],
   );
 
   const value = React.useMemo(
-    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register }),
-    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register],
+    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation }),
+    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation],
   );
 
   return <LocalDbContext.Provider value={value}>{children}</LocalDbContext.Provider>;
@@ -308,8 +519,13 @@ export function usePrototype(): boolean {
   return useLocalDb().scenario !== null;
 }
 
+/** Which conversation is on screen, and how to move between them. */
+export function useConversation(): ConversationControls {
+  return useLocalDb().conversation;
+}
+
 /**
- * The optimistic half of each command.
+ * The optimistic half of each command, for the prototype.
  *
  * This is deliberately small. It exists so a click has a visible local
  * consequence — which is the behaviour a local-first UI owes the user —
@@ -340,10 +556,11 @@ function applyCommand(
 }
 
 /**
- * The approval decision, which is the one piece of local state a screen
- * both writes and immediately reads back. It lives on the overlay rather
- * than in a component so that the conversation and the amendments screen
- * agree about it — they render the same approval.
+ * The approval decision, which is the one piece of local state a prototype
+ * screen both writes and immediately reads back. It lives on the overlay
+ * rather than in a component so that the conversation and the amendments
+ * screen agree about it — they render the same approval. In the product the
+ * decision is the amendment's own status, read back from the factory.
  */
 export function useDecision(): DecisionRow {
   return useLocalDb().db.decision;
@@ -386,4 +603,135 @@ function toProjectRow(project: FactoryProject): ProjectRow {
     workspace_mcp_url: project.workspace_mcp_url,
     stack_hints: project.stack_hints,
   };
+}
+
+/**
+ * A factory conversation as a list row. The subtitle is where it stands,
+ * because that — not when it started — is what decides which one to open.
+ */
+function toConversationRow(conversation: FactoryConversation): ConversationRow {
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const state =
+    conversation.kind === "intake"
+      ? "import of existing specifications"
+      : conversation.awaiting_amendments > 0
+        ? `${plural(conversation.awaiting_amendments, "amendment")} awaiting`
+        : conversation.amendments > 0
+          ? plural(conversation.amendments, "amendment")
+          : conversation.turn_count === 0
+            ? "no messages yet"
+            : "no amendment";
+
+  return {
+    id: conversation.id,
+    project_id: conversation.project_id,
+    title: conversation.title?.trim() || "Untitled conversation",
+    subtitle: `${state} · ${format.at(conversation.updated_at)}`,
+    updated_at: conversation.updated_at,
+    turn_count: conversation.turn_count,
+    // Deployments are role-named (ADR-0027) — the architect answers on
+    // `architect` — so the deployment is the label, not a suffix to one.
+    deployment: conversation.deployment ?? "architect",
+    snapshot_id: "",
+  };
+}
+
+/**
+ * A thread as the screen draws it. Payloads pass through as the factory
+ * stored them; the one thing added is the approval card after each spec
+ * diff, carrying the amendment's current status — the turn recorded the
+ * proposal, and whether it has since been approved is a separate, later
+ * fact.
+ */
+function toTurnRows(detail: FactoryConversationDetail): TurnRow[] {
+  const amendments = new Map(detail.amendments.map((a) => [a.id, a]));
+
+  return detail.turns
+    .filter((turn) => turn.role !== "system")
+    .map((turn): TurnRow => {
+      if (turn.role === "user") {
+        return {
+          id: turn.id,
+          conversation_id: detail.conversation.id,
+          seq: turn.seq,
+          author: "human",
+          author_name: "You",
+          at: turn.at,
+          payloads: [{ type: "markdown", text: turn.content }],
+        };
+      }
+
+      const stored: Payload[] = turn.payloads?.length
+        ? turn.payloads
+        : [{ type: "markdown", text: turn.content }];
+
+      const payloads = stored.flatMap((payload): Payload[] => {
+        // A settled turn with no prose stores an empty markdown payload;
+        // drawing it would be an empty bubble.
+        if (payload.type === "markdown" && payload.text.trim() === "") return [];
+        if (payload.type !== "spec_diff") return [payload];
+
+        const amendment = amendments.get(payload.amendment_id);
+        return [
+          payload,
+          {
+            type: "approval_card",
+            approval: {
+              id: payload.amendment_id,
+              target_type: "amendment",
+              target_id: payload.amendment_id,
+              summary: payload.summary,
+              status:
+                amendment?.status === "approved"
+                  ? "approved"
+                  : amendment?.status === "rejected"
+                    ? "rejected"
+                    : "awaiting",
+              // Approvers per project are ADR-0017's and not modelled yet;
+              // an empty list is the truth, not a placeholder.
+              required_approvers: [],
+              reason: amendment?.rejected_reason ?? undefined,
+            },
+          },
+        ];
+      });
+
+      return {
+        id: turn.id,
+        conversation_id: detail.conversation.id,
+        seq: turn.seq,
+        author: "agent",
+        author_name: "architect",
+        // Only worth saying when it is not the name already on the turn.
+        deployment:
+          detail.conversation.deployment && detail.conversation.deployment !== "architect"
+            ? detail.conversation.deployment
+            : undefined,
+        at: turn.at,
+        payloads,
+      };
+    });
+}
+
+/** The human turn while the factory has not yet saved it. */
+function pendingHumanTurn(conversationId: string, text: string): TurnRow {
+  return {
+    id: `pending-${conversationId}`,
+    conversation_id: conversationId,
+    seq: Number.MAX_SAFE_INTEGER,
+    author: "human",
+    author_name: "You",
+    at: new Date().toISOString(),
+    pending: true,
+    payloads: [{ type: "markdown", text }],
+  };
+}
+
+/** A new conversation is titled by its first message, cut at a word near sixty characters. */
+function titleFrom(message: string): string {
+  const line = message.split("\n")[0].trim();
+  if (line.length <= 60) return line;
+  const cut = line.slice(0, 60);
+  const space = cut.lastIndexOf(" ");
+  return `${space > 30 ? cut.slice(0, space) : cut}…`;
 }

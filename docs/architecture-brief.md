@@ -269,6 +269,7 @@ df.describe()                                   the factory answers its own hand
 df.projects.select(project_id)
 df.conversations.start(project_id, title?)
 df.conversations.turn(conversation_id, message)     → payloads[] per ADR-0021
+df.conversations.list(project_id) / get(conversation_id)   the thread as stored, with amendment state
 df.specs.query(project_id, q, layer?, kinds?, limit)
 df.specs.get(spec_id, revision?)
 df.specs.neighborhood(spec_id, depth)
