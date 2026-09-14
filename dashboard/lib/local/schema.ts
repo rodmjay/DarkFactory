@@ -63,6 +63,8 @@ export interface ConversationRow {
   title: string;
   /** The one-line state shown in the list: "1 amendment awaiting", etc. */
   subtitle: string;
+  /** `intake` for the thread an import files its proposals under (ADR-0037). */
+  kind?: "conversation" | "intake";
   updated_at: string;
   turn_count: number;
   deployment: string;

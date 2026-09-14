@@ -72,32 +72,59 @@ public class RetryPolicyTests(EngineTestFixture fixture)
         throw new TimeoutException($"Run {runId} never moved past {stage} within {timeout}.");
     }
 
+    /// <summary>
+    /// The engine database is shared across tests and the state machine
+    /// claims the oldest runnable run, whoever's it is. A run these tests
+    /// left Pending at Spec was claimed first by the next test, whose handler
+    /// only knows Intake — so whether these passed depended on the order they
+    /// ran in. Every run is retired when its test ends, after its assertions.
+    /// </summary>
+    private static async Task RetireAsync(string connectionString, string runId)
+    {
+        await using var db = TestDb.Create(connectionString);
+        var run = await db.Runs.SingleAsync(r => r.Id == runId);
+        if (run.Status is RunStatus.Pending or RunStatus.Running)
+        {
+            run.Status = RunStatus.Completed;
+            run.LeasedBy = null;
+            run.LeaseExpiresAt = null;
+            await db.SaveChangesAsync();
+        }
+    }
+
     [Fact]
     public async Task A_retryable_failure_is_retried_with_backoff_until_it_succeeds()
     {
         await using var db = TestDb.Create(fixture.ConnectionString);
         var run = await TestSeed.SeedRunAsync(db);
 
-        var handler = new FlakyHandler(StageId.Intake, succeedsOnAttempt: 3);
-        var options = new EngineOptions { WorkerId = "retry-test", LeaseDurationSeconds = 30, RetryBackoffBaseSeconds = 0.01, MaxAttempts = 5 };
+        try
+        {
+            var handler = new FlakyHandler(StageId.Intake, succeedsOnAttempt: 3);
+            var options = new EngineOptions { WorkerId = "retry-test", LeaseDurationSeconds = 30, RetryBackoffBaseSeconds = 0.01, MaxAttempts = 5 };
 
-        await DriveUntilPastStageAsync(fixture.ConnectionString, handler, options, run.Id, StageId.Intake, TimeSpan.FromSeconds(10));
+            await DriveUntilPastStageAsync(fixture.ConnectionString, handler, options, run.Id, StageId.Intake, TimeSpan.FromSeconds(10));
 
-        var checkpoints = await db.StageCheckpoints
-            .Where(c => c.RunId == run.Id && c.Stage == StageId.Intake)
-            .OrderBy(c => c.Attempt)
-            .ToListAsync();
+            var checkpoints = await db.StageCheckpoints
+                .Where(c => c.RunId == run.Id && c.Stage == StageId.Intake)
+                .OrderBy(c => c.Attempt)
+                .ToListAsync();
 
-        Assert.Equal(3, checkpoints.Count);
-        Assert.Equal([RunStatus.Failed, RunStatus.Failed, RunStatus.Completed], checkpoints.Select(c => c.Status));
-        Assert.Equal([1, 2, 3], checkpoints.Select(c => c.Attempt));
+            Assert.Equal(3, checkpoints.Count);
+            Assert.Equal([RunStatus.Failed, RunStatus.Failed, RunStatus.Completed], checkpoints.Select(c => c.Status));
+            Assert.Equal([1, 2, 3], checkpoints.Select(c => c.Attempt));
 
-        var final = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == run.Id);
-        Assert.Equal(StageId.Spec, final.CurrentStage);
-        Assert.Equal(RunStatus.Pending, final.Status);
+            var final = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == run.Id);
+            Assert.Equal(StageId.Spec, final.CurrentStage);
+            Assert.Equal(RunStatus.Pending, final.Status);
 
-        var failedAttemptEvents = await db.Events.CountAsync(e => e.RunId == run.Id && e.Type == "stage.attempt_failed");
-        Assert.Equal(2, failedAttemptEvents);
+            var failedAttemptEvents = await db.Events.CountAsync(e => e.RunId == run.Id && e.Type == "stage.attempt_failed");
+            Assert.Equal(2, failedAttemptEvents);
+        }
+        finally
+        {
+            await RetireAsync(fixture.ConnectionString, run.Id);
+        }
     }
 
     [Fact]
@@ -106,16 +133,23 @@ public class RetryPolicyTests(EngineTestFixture fixture)
         await using var db = TestDb.Create(fixture.ConnectionString);
         var run = await TestSeed.SeedRunAsync(db);
 
-        var handler = new AlwaysFailsHandler(StageId.Intake);
-        var options = new EngineOptions { WorkerId = "retry-test", LeaseDurationSeconds = 30, RetryBackoffBaseSeconds = 0.01, MaxAttempts = 2 };
+        try
+        {
+            var handler = new AlwaysFailsHandler(StageId.Intake);
+            var options = new EngineOptions { WorkerId = "retry-test", LeaseDurationSeconds = 30, RetryBackoffBaseSeconds = 0.01, MaxAttempts = 2 };
 
-        await DriveUntilPastStageAsync(fixture.ConnectionString, handler, options, run.Id, StageId.Intake, TimeSpan.FromSeconds(10));
+            await DriveUntilPastStageAsync(fixture.ConnectionString, handler, options, run.Id, StageId.Intake, TimeSpan.FromSeconds(10));
 
-        var final = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == run.Id);
-        Assert.Equal(RunStatus.Failed, final.Status);
-        Assert.Equal(StageId.Intake, final.CurrentStage); // never advanced
+            var final = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == run.Id);
+            Assert.Equal(RunStatus.Failed, final.Status);
+            Assert.Equal(StageId.Intake, final.CurrentStage); // never advanced
 
-        var stageFailedEvents = await db.Events.CountAsync(e => e.RunId == run.Id && e.Type == "stage.failed");
-        Assert.Equal(1, stageFailedEvents);
+            var stageFailedEvents = await db.Events.CountAsync(e => e.RunId == run.Id && e.Type == "stage.failed");
+            Assert.Equal(1, stageFailedEvents);
+        }
+        finally
+        {
+            await RetireAsync(fixture.ConnectionString, run.Id);
+        }
     }
 }

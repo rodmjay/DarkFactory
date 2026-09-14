@@ -31,11 +31,36 @@ say()  { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 fail() { printf '\033[31mFAIL  %s\033[0m\n' "$1" >&2; }
 pass() { printf '\033[32mPASS  %s\033[0m\n' "$1"; }
 
+# ---------------------------------------------------------------------------
+# Its own Compose project — never the one a developer is running
+# ---------------------------------------------------------------------------
+#
+# This script starts and ends with `docker compose down -v`, which deletes
+# volumes. Under the default project name — the checkout's directory — that
+# was the developer's live stack, and on 2026-09-13 the live stack's volume
+# held the only registration of a customer project. Running the gate that
+# CLAUDE.md requires before every commit to main would have deleted it.
+#
+# So the check gets its own project, its own volume and its own host ports,
+# and can run beside a live stack without touching any of it. The ports are
+# the defaults plus 20000, overridable, because a collision with them is the
+# machine, not the code.
+export COMPOSE_PROJECT_NAME="${CHECK_STACK_PROJECT:-darkfactory-check}"
+if [ "$COMPOSE_PROJECT_NAME" = "darkfactory" ] || [ "$COMPOSE_PROJECT_NAME" = "$(basename "$PWD")" ]; then
+    fail "refusing to run as Compose project '$COMPOSE_PROJECT_NAME': that is the project a developer runs, and this script deletes its volumes."
+    exit 1
+fi
+export POSTGRES_PORT="${CHECK_STACK_POSTGRES_PORT:-25432}"
+export FACTORY_PORT="${CHECK_STACK_FACTORY_PORT:-25100}"
+export DASHBOARD_PORT="${CHECK_STACK_DASHBOARD_PORT:-23000}"
+export WORKSPACE_DEMO_PORT="${CHECK_STACK_WORKSPACE_DEMO_PORT:-28931}"
+
 cleanup() {
     if [ "$KEEP" -eq 0 ]; then
         docker compose down -v >/dev/null 2>&1 || true
     else
-        printf '\nStack left running (--keep). `docker compose down -v` when finished.\n'
+        printf '\nStack left running (--keep) as project %s. `docker compose -p %s down -v` when finished.\n' \
+            "$COMPOSE_PROJECT_NAME" "$COMPOSE_PROJECT_NAME"
     fi
 }
 
@@ -110,8 +135,8 @@ if ! docker compose up -d > "$up_log" 2>&1; then
         # on a port that does not exist.
         grep -oiE '(0\.0\.0\.0|127\.0\.0\.1):[0-9]+' "$up_log" \
             | grep -v ':0$' | sort -u | sed 's/^/  in use: /' >&2
-        printf 'Set the matching override in .env and re-run:\n' >&2
-        printf '  POSTGRES_PORT  FACTORY_PORT  DASHBOARD_PORT  WORKSPACE_DEMO_PORT\n' >&2
+        printf 'Set the matching override and re-run:\n' >&2
+        printf '  CHECK_STACK_POSTGRES_PORT  CHECK_STACK_FACTORY_PORT  CHECK_STACK_DASHBOARD_PORT  CHECK_STACK_WORKSPACE_DEMO_PORT\n' >&2
     fi
 
     rm -f "$up_log"

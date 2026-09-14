@@ -250,7 +250,14 @@ export function LocalDbProvider({
   const [thinkingIn, setThinkingIn] = React.useState<string | null>(null);
   const [conversationError, setConversationError] = React.useState<string | null>(null);
 
-  const activeId = selected ? selected.id : (factoryConversations?.[0]?.id ?? null);
+  // With nothing chosen, the newest conversation someone actually had — not
+  // an import's thread. An intake is newest whenever one has just been
+  // pulled, and opening it by default sent a question meant for the
+  // architect into the import's thread instead. Still listed, still
+  // selectable; just not where the reader lands.
+  const activeId = selected
+    ? selected.id
+    : (factoryConversations?.find((c) => c.kind !== "intake")?.id ?? null);
 
   React.useEffect(() => {
     if (projectId === null) return;
@@ -627,6 +634,7 @@ function toConversationRow(conversation: FactoryConversation): ConversationRow {
     project_id: conversation.project_id,
     title: conversation.title?.trim() || "Untitled conversation",
     subtitle: `${state} · ${format.at(conversation.updated_at)}`,
+    kind: conversation.kind,
     updated_at: conversation.updated_at,
     turn_count: conversation.turn_count,
     // Deployments are role-named (ADR-0027) — the architect answers on
