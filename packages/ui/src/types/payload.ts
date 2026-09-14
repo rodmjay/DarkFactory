@@ -1,12 +1,13 @@
 /**
  * ADR-0021's rendering vocabulary, as it appears on the wire.
  *
- * Nine component types, of which `spec_diff` is the only one with a schema
- * under `contracts/schemas/` today. The rest are typed here and marked
- * **proposed** so that writing their schemas stays a deliberate act.
+ * Ten component types, of which `spec_diff` and `decision` (ADR-0039) are
+ * the ones with a schema under `contracts/schemas/` today. The rest are typed
+ * here and marked **proposed** so that writing their schemas stays a
+ * deliberate act.
  *
- * The wire is snake_case throughout, envelope included, matching all eight
- * schemas in `contracts/schemas/`. It briefly was not: the envelope
+ * The wire is snake_case throughout, envelope included, matching every
+ * schema in `contracts/schemas/`. It briefly was not: the envelope
  * serialised as camelCase by inheriting the SDK's default handling of C#
  * records, and every payload carried two discriminators (`$type` from the
  * serializer and `type` from ADR-0021) that agreed only by luck. Both were
@@ -27,6 +28,7 @@ export const PAYLOAD_TYPES = [
   "code_diff",
   "form",
   "metric",
+  "decision",
 ] as const;
 export type PayloadType = (typeof PAYLOAD_TYPES)[number];
 
@@ -117,6 +119,48 @@ export interface MetricPayload extends PayloadBase, Metric {
   type: "metric";
 }
 
+/**
+ * One path open to a person deciding. `contracts/schemas/decision.schema.json`.
+ * A recommended option is the proposer's view, labelled as such — it is never
+ * preselected, and choosing it is still recorded as the person's decision.
+ */
+export interface DecisionOption {
+  id: string;
+  /** Short enough for a button. */
+  label: string;
+  /** What follows from choosing it: the specification that results, what it rules out. */
+  consequence?: string;
+  /** At most one per decision. */
+  recommended?: boolean;
+}
+
+/**
+ * Something a person has to decide, with the paths open to them (ADR-0039).
+ * Schema-backed: `contracts/schemas/decision.schema.json`.
+ */
+export interface Decision {
+  /** Stable within its source: an intake question id, or one the proposer chose. */
+  id: string;
+  /** The decision, as one question a person can answer. */
+  title: string;
+  /** Why it needs deciding now: what goes wrong if nobody does. */
+  why?: string;
+  /** The document or node it is about, when there is one. */
+  source_ref?: string;
+  /** What sort of decision — for an intake question, its hole kind. */
+  kind?: string;
+  /** Two to four. */
+  options: DecisionOption[];
+  /** Whether answering in one's own words is allowed. Absent means true. */
+  allow_other?: boolean;
+  /** Whether it may be left open on purpose. Absent means true. */
+  allow_defer?: boolean;
+}
+
+export interface DecisionPayload extends PayloadBase, Decision {
+  type: "decision";
+}
+
 export type Payload =
   | MarkdownPayload
   | SpecDiffPayload
@@ -126,7 +170,8 @@ export type Payload =
   | TablePayload
   | CodeDiffPayload
   | FormPayload
-  | MetricPayload;
+  | MetricPayload
+  | DecisionPayload;
 
 /** A cost breakdown for CostBar. Not a payload type — a component input. */
 export type CostBreakdown = CostSegment[];

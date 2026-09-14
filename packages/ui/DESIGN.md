@@ -7,7 +7,7 @@ to Claude Design for prototyping. Everything visual lives in this package;
 Decisions recorded in [ADR-0033](../../docs/adr/0033-design-system.md).
 
 **Status:** steps 1 and 2 are complete — tokens, themes, typography, the
-shadcn base set, the sixteen domain components, the showcase, the visual
+shadcn base set, the seventeen domain components, the showcase, the visual
 regression suite, the tokens-only check, and this document. Step 3 is the
 export bundle for Claude Design.
 
@@ -329,7 +329,7 @@ Every component below renders in every listed state on the showcase at
 
 ### Domain primitives
 
-The three smallest ones. The other sixteen are in § 8.
+The three smallest ones. The other seventeen are in § 8.
 
 | Component | Props | States |
 |---|---|---|
@@ -392,7 +392,8 @@ What the product is made of. Every one renders in every listed state on the
 showcase; if a state is not there, it is not in the system.
 
 Typed against `contracts/schemas/` where a schema exists — today that is
-`specdiff.schema.json` and `describe.schema.json` — and against types in
+`specdiff.schema.json`, `describe.schema.json` and `decision.schema.json` —
+and against types in
 `packages/ui/src/types` where one does not. Those are marked **proposed**
 below and in the source, so writing the schema stays a deliberate act
 (ADR-0021's rule that the vocabulary grows on purpose) rather than a
@@ -404,6 +405,7 @@ transcription of whatever the first component happened to need.
 | `SpecNodeCard` | `node: SpecNode`, `selected` | default, selected, retired, drifted | ADR-0016 + ADR-0024 |
 | `SpecDiff` | `diff: SpecDiffDocument`, `conflicts`, `summary` | with conflicts, without, empty | `specdiff.schema.json`; `conflicts` proposed |
 | `ApprovalCard` | `approval: Approval`, `canDecide`, `onApprove`, `onReject` | awaiting, approved, rejected, waiting-on-others | proposed `approval_card` |
+| `DecisionCard` | `decision: Decision`, `state` (`open` · `answered` · `deferred`), `busy`, `onChoose`, `onOther`, `onDefer`, `defaultMode` | open with a recommended option, open without own-words or leave-open, answering in own words, leaving open, answered, deferred | `decision.schema.json`; ADR-0039 |
 | `AmendmentRow` | `amendment: Amendment`, `inBatch`, `seq` | default, in-batch, blocked-by-dependency | ADR-0029 |
 | `BatchCard` | `batch: Batch`, `onDeploy` | composing, running, blocked-by-verify, deployable, deployed | ADR-0029 |
 | `TeamMemberCard` | `member: TeamMember` | native agent, agent server, persona (priced), over-budget | ADR-0028 |
@@ -439,6 +441,16 @@ schema was lying about what a release is.
 only "no" sends the proposer back to guess, and the reason is the entire
 content of the decision. Approval needs none because the diff already says
 what was agreed to.
+
+**A recommended option is marked, never preselected.** A `DecisionCard`
+carries the proposer's view as a "Recommended" badge on one option, and
+nothing is selected until a person picks. A card that arrived with the
+recommendation already chosen would make "accept the default" the path of
+least resistance for every question in the list, and ADR-0039 records the
+choice as the person's, not the proposer's. Leaving a decision open asks for
+a reason for the same reason a rejection does. Read-only (no callbacks, as
+`PayloadRenderer` draws it) keeps the options at full contrast rather than
+the usual disabled fade — a consequence at half opacity is one nobody reads.
 
 **`PersonaCard` requires `modelFamily` as a prop.** ADR-0028 makes stating
 the underlying model a requirement rather than a courtesy — two personas on

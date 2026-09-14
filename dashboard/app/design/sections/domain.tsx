@@ -7,6 +7,7 @@ import {
   BatchCard,
   CodeDiff,
   CostBar,
+  DecisionCard,
   DependencyGraph,
   MetricTile,
   PayloadRenderer,
@@ -35,7 +36,7 @@ export function DomainComponents() {
     <Section
       id="domain"
       title="Domain components"
-      note="What the product is actually made of. Typed against contracts/schemas/ where a schema exists — today that is spec_diff and describe — and against types proposed in packages/ui/src/types where one does not. Fixtures are the real 3d acceptance run's ids and token counts, not invented ones."
+      note="What the product is actually made of. Typed against contracts/schemas/ where a schema exists — today that is spec_diff, describe and decision — and against types proposed in packages/ui/src/types where one does not. Fixtures are the real 3d acceptance run's ids and token counts, not invented ones."
     >
       <Block
         title="StageTimeline"
@@ -143,6 +144,38 @@ export function DomainComponents() {
           </Frame>
           <Frame label="rejected">
             <ApprovalCard approval={fixture.approvals.rejected} />
+          </Frame>
+        </div>
+      </Block>
+
+      <Block
+        title="DecisionCard"
+        note="Something a person has to decide, with the paths open (ADR-0039) — an intake question, a scope conflict the architect found, a gap nobody specified. The recommended option is marked, never preselected: it is the proposer's view, and choosing it is still the person's decision. Leaving it open asks for a reason."
+      >
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Frame label="open — with a recommended option">
+            <DecisionCard decision={fixture.decisions.mapScope} onChoose={() => {}} onOther={() => {}} onDefer={() => {}} />
+          </Frame>
+          <Frame label="open — a contradiction: no own words, no leaving open">
+            <DecisionCard decision={fixture.decisions.lowBattery} onChoose={() => {}} />
+          </Frame>
+          <Frame label="answering in own words">
+            <DecisionCard decision={fixture.decisions.cargoMix} defaultMode="other" onChoose={() => {}} onOther={() => {}} onDefer={() => {}} />
+          </Frame>
+          <Frame label="leaving open — a reason is required">
+            <DecisionCard decision={fixture.decisions.cargoMix} defaultMode="defer" onChoose={() => {}} onOther={() => {}} onDefer={() => {}} />
+          </Frame>
+          <Frame label="answered — the recommended option">
+            <DecisionCard decision={fixture.decisions.mapScope} state={{ status: "answered", choice: "earth-only", by: "Rod Johnson" }} />
+          </Frame>
+          <Frame label="deferred">
+            <DecisionCard
+              decision={fixture.decisions.cargoMix}
+              state={{ status: "deferred", reason: "Waiting on the cargo design in 0067 — revisit once its slots are drawn." }}
+            />
+          </Frame>
+          <Frame label="read-only — no callbacks, as PayloadRenderer draws it" className="lg:col-span-2">
+            <DecisionCard decision={fixture.decisions.mapScope} />
           </Frame>
         </div>
       </Block>
@@ -393,6 +426,10 @@ const EXAMPLES: { label: string; payload: Payload }[] = [
   {
     label: "approval_card",
     payload: { type: "approval_card", approval: fixture.approvals.awaiting },
+  },
+  {
+    label: "decision",
+    payload: { type: "decision", ...fixture.decisions.lowBattery },
   },
   {
     label: "dependency_graph",

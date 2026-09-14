@@ -47,6 +47,7 @@ export * from "./components/domain/approval-card";
 export * from "./components/domain/batch-card";
 export * from "./components/domain/code-diff";
 export * from "./components/domain/cost-bar";
+export * from "./components/domain/decision-card";
 export * from "./components/domain/dependency-graph";
 export * from "./components/domain/layer-badge";
 export * from "./components/domain/metric-tile";

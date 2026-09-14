@@ -365,6 +365,35 @@ export const manifest: DesignSystemManifest = {
         "Rejection requires a reason and approval does not. A rejection that says only 'no' sends the proposer back to guess; approval needs none because the diff already says what was agreed to.",
     },
     {
+      component: "DecisionCard",
+      group: "domain",
+      summary: "Something a person has to decide: the question, why now, 2–4 options with their consequences, and ways to answer in one's own words or leave it open.",
+      props: [
+        { name: "decision", type: "Decision", required: true, note: "The `decision` payload, with or without its `type`." },
+        {
+          name: "state",
+          type: "{ status: 'open' } | { status: 'answered'; choice: string; by?: string } | { status: 'deferred'; reason: string }",
+          note: "`choice` is an option id, or the person's own words when it matches none. Defaults to open.",
+        },
+        { name: "busy", type: "boolean", note: "An answer is in flight; everything is disabled." },
+        { name: "onChoose", type: "(optionId: string) => void" },
+        { name: "onOther", type: "(text: string) => void" },
+        { name: "onDefer", type: "(reason: string) => void" },
+        { name: "defaultMode", type: "'choose' | 'other' | 'defer'", note: "Which way of answering is open on first render." },
+      ],
+      states: [
+        "open with a recommended option",
+        "open without own-words or leave-open",
+        "answering in own words",
+        "leaving open",
+        "answered",
+        "deferred",
+      ],
+      shape: "contracts/schemas/decision.schema.json; ADR-0039",
+      constraint:
+        "A recommended option is marked, never preselected — it is the proposer's view and choosing it is still the person's decision. Leaving a decision open requires a reason. With no callbacks the card is read-only and keeps full contrast: a consequence dimmed to half opacity is one nobody reads.",
+    },
+    {
       component: "AmendmentRow",
       group: "domain",
       summary: "A backlog item, draggable into a batch.",
@@ -507,6 +536,7 @@ export const manifest: DesignSystemManifest = {
         "code_diff",
         "form",
         "metric",
+        "decision",
         "a reply carrying three payloads",
         "unknown type",
       ],
