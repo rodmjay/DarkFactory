@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://darkfactory.dev/schemas/describe.schema.json",
   "title": "DescribeResponse",
-  "description": "The response to df.describe(), the mandatory handshake every compliant server answers. See docs/conventions/describe.md and ADR-0018. The factory validates every describe response against this schema before storing it; a server that answers but does not validate fails registration. Unknown top-level properties are rejected so that a typo (`capabilties`) fails loudly instead of registering as an empty capability list; forward compatibility lives in `extensions`, which is open — see its description and ADR-0020.",
+  "description": "The response to df.describe(), the mandatory handshake every compliant server answers. See docs/conventions/describe.md, ADR-0018 and ADR-0037. The factory validates every describe response against this schema before storing it; a server that answers but does not validate fails registration. Unknown top-level properties are rejected so that a typo (`capabilties`) fails loudly instead of registering as an empty capability list; forward compatibility lives in `extensions`, which is open \u2014 see its description and ADR-0020.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "extensions": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Open by design, and the only place a newer convention version may put fields an older factory has never heard of. A minor version may add capability ONLY here, or as an optional top-level field this schema declares — which means a server built against 1.1 still validates on a factory that only knows 1.0, provided its additions live here. The factory ignores keys it does not recognise rather than rejecting the response (ADR-0020's overlap window)."
+      "description": "Open by design, and the only place a newer convention version may put fields an older factory has never heard of. A minor version may add capability ONLY here, or as an optional top-level field this schema declares \u2014 which means a server built against 1.1 still validates on a factory that only knows 1.0, provided its additions live here. The factory ignores keys it does not recognise rather than rejecting the response (ADR-0020's overlap window)."
     },
     "name": {
       "type": "string",
@@ -23,42 +23,45 @@
     },
     "convention_versions": {
       "type": "array",
-      "items": { "$ref": "#/$defs/semver" },
+      "items": {
+        "$ref": "#/$defs/semver"
+      },
       "minItems": 1,
       "uniqueItems": true,
       "description": "Every convention version this server can speak, when it speaks more than one. `convention_version` is the preferred one and MUST also appear here when this is present. The factory itself answers with this populated (ADR-0020)."
     },
     "domain": {
-      "type": "string",
-      "enum": [
-        "factory",
-        "workspace",
-        "vcs",
-        "deploy",
-        "standards",
-        "qa",
-        "knowledge",
-        "observability",
-        "ticketing",
-        "agent"
-      ],
-      "description": "What kind of server this is. `factory` is reserved for Dark Factory answering its own handshake; `agent` marks an agent server (ADR-0028)."
+      "$ref": "#/$defs/domain",
+      "description": "The server's PRIMARY domain, and the one an older factory reads. Still required at v0.3 precisely so that a multi-domain server stays registrable by a factory that has never heard of `domains` \u2014 see ADR-0037. A single-domain server sets this and omits `domains`."
+    },
+    "domains": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/domain"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Every domain this server serves, when it serves more than one (v0.3, ADR-0037). `domain` is the primary one and MUST also appear here when this is present. A workspace profile is the motivating case: one server per workspace answering for `workspace`, `standards`, `knowledge` and `qa` at once. Absent means the server serves exactly `domain`, which is what every v0.2 server means by saying nothing."
     },
     "capabilities": {
       "type": "array",
-      "items": { "$ref": "#/$defs/capability" },
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
       "uniqueItems": true,
       "description": "Dotted df.* tool names this server implements. Anything outside the df. root is the server's own business and is not listed here (ADR-0018)."
     },
     "requires": {
       "type": "array",
-      "items": { "$ref": "#/$defs/capability" },
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
       "uniqueItems": true,
       "description": "Capabilities this server needs from elsewhere in order to function. Same dotted df.* form as `capabilities`."
     },
     "effective_config": {
       "type": "object",
-      "description": "What this instance is actually pointed at — repo, branch, environment, subscription. MUST NOT contain secrets: it is stored in the registry and rendered in the dashboard.",
+      "description": "What this instance is actually pointed at \u2014 repo, branch, environment, subscription. MUST NOT contain secrets: it is stored in the registry and rendered in the dashboard.",
       "additionalProperties": true
     }
   },
@@ -80,6 +83,22 @@
       "type": "string",
       "pattern": "^df\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
       "description": "A dotted capability name rooted at df., e.g. `df.describe`, `df.files.read_many`, `df.vcs.open_pr`."
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "factory",
+        "workspace",
+        "vcs",
+        "deploy",
+        "standards",
+        "qa",
+        "knowledge",
+        "observability",
+        "ticketing",
+        "agent"
+      ],
+      "description": "What kind of server this is. `factory` is reserved for Dark Factory answering its own handshake; `agent` marks an agent server (ADR-0028)."
     }
   }
 }
