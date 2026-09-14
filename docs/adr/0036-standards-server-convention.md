@@ -71,12 +71,13 @@ wanting the factory to edit a corpus should register it as a *workspace*
 server as well — which is a different domain, a different trust decision,
 and a deliberate second step rather than a hidden capability of this one.
 
-**Conformance does not probe these capabilities yet.** `ConformanceChecker`
-knows how to exercise `df.files.write_many`, `df.files.list` and
-`df.exec.run`; everything else is recorded `NotProbed`. A standards server
-therefore registers with its four capabilities unprobed, which is honest
-but weak. Probing `df.standards.index` and asserting a non-negative count
-is the obvious next step and is deliberately not in this ADR's slice.
+~~**Conformance does not probe these capabilities yet.**~~ *Superseded
+2026-09-14:* `ConformanceChecker` now asks all four — `list` must be
+complete with `updated` on every entry, `get` must return text for a listed
+id, `query` must carry a non-negative `index_age_seconds`, and `index` a
+non-negative count. A server missing any of these registers `Degraded`, and
+the query probe is the one the convention cares about most: it is what
+stops stale rules being presented as current.
 
 ## Amendment (2026-09-13): enumeration is the factory's ingest path
 

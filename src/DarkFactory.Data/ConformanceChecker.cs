@@ -44,10 +44,25 @@ public sealed class ConformanceChecker(IServerProbe probe)
     private const string ExecRun = "df.exec.run";
     private const string CorpusList = "df.corpus.list";
     private const string CorpusGet = "df.corpus.get";
+    private const string StandardsList = "df.standards.list";
+    private const string StandardsGet = "df.standards.get";
+    private const string StandardsQuery = "df.standards.query";
+    private const string StandardsIndex = "df.standards.index";
+
+    /// <summary>
+    /// Asked of a standards server's <c>query</c>. Any word will do: the
+    /// probe asserts on the response's shape and on <c>index_age_seconds</c>,
+    /// never on which documents came back.
+    /// </summary>
+    public const string StandardsProbeQuery = "test";
 
     /// <summary>Capabilities this slice knows how to check. Everything else is recorded as NotProbed.</summary>
     public static IReadOnlySet<string> ProbedCapabilities { get; } =
-        new HashSet<string>(StringComparer.Ordinal) { WriteMany, List, ExecRun, CorpusList, CorpusGet };
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            WriteMany, List, ExecRun, CorpusList, CorpusGet,
+            StandardsList, StandardsGet, StandardsQuery, StandardsIndex,
+        };
 
     public async Task<IReadOnlyList<ConformanceResult>> RunAsync(
         string serverId,
@@ -114,6 +129,41 @@ public sealed class ConformanceChecker(IServerProbe probe)
         {
             results.Add(Row(serverId, conformanceRunId, CorpusGet,
                 new Outcome(ConformanceStatus.Failed, $"declared without {CorpusList}, so there is no id to fetch", 0)));
+        }
+
+        // A standards server (docs/conventions/standards.md). Until now all
+        // four were recorded NotProbed, so a standards server registered
+        // "Conformant" having been asked nothing but its name.
+        if (declared.Contains(StandardsList))
+        {
+            var (outcome, firstId) = await ProbeStandardsListAsync(serverUrl, cancellationToken);
+            results.Add(Row(serverId, conformanceRunId, StandardsList, outcome));
+
+            if (declared.Contains(StandardsGet))
+            {
+                var get = firstId is null
+                    ? new Outcome(outcome.Status == ConformanceStatus.Passed ? ConformanceStatus.NotProbed : ConformanceStatus.Failed,
+                        outcome.Status == ConformanceStatus.Passed
+                            ? "the server lists no standards, so there was nothing to fetch"
+                            : $"skipped: {StandardsList} did not pass, so there was no id to fetch", 0)
+                    : await ProbeStandardsGetAsync(serverUrl, firstId, cancellationToken);
+                results.Add(Row(serverId, conformanceRunId, StandardsGet, get));
+            }
+        }
+        else if (declared.Contains(StandardsGet))
+        {
+            results.Add(Row(serverId, conformanceRunId, StandardsGet,
+                new Outcome(ConformanceStatus.Failed, $"declared without {StandardsList}, so there is no id to fetch", 0)));
+        }
+
+        if (declared.Contains(StandardsQuery))
+        {
+            results.Add(Row(serverId, conformanceRunId, StandardsQuery, await ProbeStandardsQueryAsync(serverUrl, cancellationToken)));
+        }
+
+        if (declared.Contains(StandardsIndex))
+        {
+            results.Add(Row(serverId, conformanceRunId, StandardsIndex, await ProbeStandardsIndexAsync(serverUrl, cancellationToken)));
         }
 
         // Everything the server declared that we have no probe for. Recorded
@@ -283,6 +333,131 @@ public sealed class ConformanceChecker(IServerProbe probe)
             : new Outcome(ConformanceStatus.Failed,
                 $"the text of '{id}' hashes to {computed}, but {CorpusList} listed {listedSha256}", result.DurationMs);
     }
+
+    /// <summary>
+    /// <c>list</c> is the factory's ingest path, so it must be complete and
+    /// every entry must carry <c>updated</c> — that is how a later ingest
+    /// tells what changed (docs/conventions/standards.md).
+    /// </summary>
+    private async Task<(Outcome Outcome, string? FirstId)> ProbeStandardsListAsync(
+        string serverUrl, CancellationToken cancellationToken)
+    {
+        var result = await probe.CallAsync(serverUrl, StandardsList, new Dictionary<string, object?>(), ProbeDeadline, cancellationToken);
+        if (!result.Ok)
+        {
+            return (new Outcome(ConformanceStatus.Failed, result.Error, result.DurationMs), null);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(result.Json!);
+            if (!document.RootElement.TryGetProperty("standards", out var array) || array.ValueKind != JsonValueKind.Array)
+            {
+                return (new Outcome(ConformanceStatus.Failed,
+                    $"response had no 'standards' array (got: {Truncate(result.Json!)})", result.DurationMs), null);
+            }
+
+            string? first = null;
+            foreach (var entry in array.EnumerateArray())
+            {
+                var id = StringProperty(entry, "id");
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(StringProperty(entry, "updated")))
+                {
+                    return (new Outcome(ConformanceStatus.Failed,
+                        $"a listed standard has no id or no 'updated' — ingest cannot tell what changed without it (got: {Truncate(entry.GetRawText())})",
+                        result.DurationMs), null);
+                }
+                first ??= id;
+            }
+
+            return (new Outcome(ConformanceStatus.Passed, null, result.DurationMs), first);
+        }
+        catch (JsonException ex)
+        {
+            return (new Outcome(ConformanceStatus.Failed, $"response was not valid JSON: {ex.Message}", result.DurationMs), null);
+        }
+    }
+
+    private async Task<Outcome> ProbeStandardsGetAsync(string serverUrl, string id, CancellationToken cancellationToken)
+    {
+        var result = await probe.CallAsync(serverUrl, StandardsGet, new Dictionary<string, object?> { ["id"] = id },
+            ProbeDeadline, cancellationToken);
+        if (!result.Ok)
+        {
+            return new Outcome(ConformanceStatus.Failed, result.Error, result.DurationMs);
+        }
+
+        return ReadObject(result, out var root) && !string.IsNullOrEmpty(StringProperty(root, "text"))
+            ? new Outcome(ConformanceStatus.Passed, null, result.DurationMs)
+            : new Outcome(ConformanceStatus.Failed,
+                $"the response for '{id}' had no text (got: {Truncate(result.Json!)})", result.DurationMs);
+    }
+
+    /// <summary>
+    /// The one field the standards convention makes non-negotiable:
+    /// <c>index_age_seconds</c> on every query, so the factory can never
+    /// present stale rules as current.
+    /// </summary>
+    private async Task<Outcome> ProbeStandardsQueryAsync(string serverUrl, CancellationToken cancellationToken)
+    {
+        var result = await probe.CallAsync(serverUrl, StandardsQuery,
+            new Dictionary<string, object?> { ["query"] = StandardsProbeQuery, ["limit"] = 1 }, ProbeDeadline, cancellationToken);
+        if (!result.Ok)
+        {
+            return new Outcome(ConformanceStatus.Failed, result.Error, result.DurationMs);
+        }
+
+        if (!ReadObject(result, out var root)
+            || !root.TryGetProperty("matches", out var matches) || matches.ValueKind != JsonValueKind.Array)
+        {
+            return new Outcome(ConformanceStatus.Failed,
+                $"response had no 'matches' array (got: {Truncate(result.Json!)})", result.DurationMs);
+        }
+
+        return root.TryGetProperty("index_age_seconds", out var age)
+            && age.ValueKind == JsonValueKind.Number && age.GetDouble() >= 0
+            ? new Outcome(ConformanceStatus.Passed, null, result.DurationMs)
+            : new Outcome(ConformanceStatus.Failed,
+                "response had no non-negative 'index_age_seconds'; the convention requires it on every query, " +
+                $"because stale standards must never look current (got: {Truncate(result.Json!)})", result.DurationMs);
+    }
+
+    private async Task<Outcome> ProbeStandardsIndexAsync(string serverUrl, CancellationToken cancellationToken)
+    {
+        var result = await probe.CallAsync(serverUrl, StandardsIndex, new Dictionary<string, object?>(), ProbeDeadline, cancellationToken);
+        if (!result.Ok)
+        {
+            return new Outcome(ConformanceStatus.Failed, result.Error, result.DurationMs);
+        }
+
+        return ReadObject(result, out var root)
+            && root.TryGetProperty("indexed", out var indexed) && indexed.ValueKind == JsonValueKind.Number && indexed.GetInt32() >= 0
+            ? new Outcome(ConformanceStatus.Passed, null, result.DurationMs)
+            : new Outcome(ConformanceStatus.Failed,
+                $"response had no non-negative 'indexed' count (got: {Truncate(result.Json!)})", result.DurationMs);
+    }
+
+    private static bool ReadObject(ProbeResult result, out JsonElement root)
+    {
+        root = default;
+        try
+        {
+            using var document = JsonDocument.Parse(result.Json!);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+            root = document.RootElement.Clone();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string? StringProperty(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private static bool TryReadArray(string json, string property, out List<string> values, out string? error)
     {
