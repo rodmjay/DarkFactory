@@ -44,13 +44,40 @@ options (suggested by a model where extraction did not supply them); the
 architect's replies carry decisions and keep their prose to a few sentences.
 One list — "Needs you" — shows them all.
 
+### Amendment, 2026-09-14: the factory leads, one step at a time
+
+Rod, the same day:
+
+> the goal is to guide them through the process of building specs — not
+> make them ask the right questions to the chat
+
+> this will put all the specs into pending that you discover here, and then
+> they will get approved in later process
+
+So "Needs you" is not a list to work through but a walk the factory leads.
+`df.intake.next` returns the **one** step due on an import, and the
+conversation screen shows only that, with the button that takes it:
+
+1. **Decide** — the next open question, as a decision card with its paths.
+2. **Rebuild** — answers are in; the document's draft is re-extracted with
+   them.
+3. **Propose** — nothing blocks the document; its specs go into **pending**
+   (a proposed amendment).
+4. **Extract** — only when nothing above is due: read a document not yet
+   read.
+
+Documents go in corpus order, so the scope document is settled first and
+every later answer is cheaper. The walk ends with every document pending.
+**It never approves.** Approval is the later, separate process ADR-0035
+describes, and nothing in the walk shortcuts it.
+
 ## Consequences
 - The vocabulary has ten types. The count in ADR-0021 and the design
   system's docs is updated with it.
 - Options are suggestions, not answers. A recommended option is the
   proposer's view and is labelled as such; choosing it is still a person's
   decision and is recorded as theirs.
-- A decision without options is not valid. A question the proposer cannot
-  offer paths for is sent with "answer in your own words" as the only way,
-  which the schema expresses as `allow_other` on a decision whose options
-  are the honest minimum.
+- A decision on the wire has 2–4 options. Intake questions raised before
+  paths existed have none until `df.intake.suggest_paths` runs; the guide
+  shows such a question with "answer in your own words" and a "Suggest
+  answers" button rather than inventing options on the client.

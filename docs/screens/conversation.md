@@ -8,7 +8,9 @@ Renders:
   turn.cost              → Card cost strip (tokens this turn, delta vs last)
   retrieval              → context panel: LayerBadge, SpecId, server health chips, cost figures, skill revisions
   conversation list      → Input (search), buttons
-States covered: empty (no thread), thread, thinking (mid-turn), run parked and posted here, optimistic write in flight, offline, context panel open/closed
+  guide (df.intake.next) → above the thread: progress line, then ONE step — decide (DecisionCard), rebuild, propose, extract, or done (ADR-0039)
+Dispatches (guide): df.intake.answer, df.intake.defer, df.intake.extract, df.intake.propose, df.intake.suggest_paths
+States covered: empty (no thread), thread, thinking (mid-turn), run parked and posted here, optimistic write in flight, offline, context panel open/closed; guide: each step, running (spinner + what is running), result with time, hidden when nothing is imported
 Proposed additions: none
 
 ## Notes

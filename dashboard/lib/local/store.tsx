@@ -22,6 +22,12 @@ import * as React from "react";
 import { format, type Payload } from "@dark-factory/ui";
 
 import {
+  answerAction,
+  deferAction,
+  loadNextStepAction,
+  proposeSourceAction,
+  rebuildDraftAction,
+  suggestPathsAction,
   checkServerAction,
   connectServerAction,
   driftAction,
@@ -174,6 +180,23 @@ export interface SpecsControls {
   openSource: (sourceId: string) => Promise<Result<FactoryIntakeSource>>;
 }
 
+/**
+ * The guided walk through building the specs (ADR-0039): the one next step
+ * the factory says is due, and the calls that take it. Each call re-reads
+ * the step after, so the panel always shows what is next now.
+ */
+export interface GuideControls {
+  /** False until the factory has answered once. */
+  hydrated: boolean;
+  /** Null when nothing has been imported. */
+  step: import("../factory/mcp").IntakeNextStep | null;
+  answer: (questionId: string, text: string) => Promise<Result<void>>;
+  defer: (questionId: string, reason: string) => Promise<Result<void>>;
+  rebuild: (sourceId: string) => Promise<Result<{ accepted: boolean; errors: string[] }>>;
+  propose: (sourceId: string) => Promise<Result<{ amendment_id: string }>>;
+  suggestPaths: (intakeId: string) => Promise<Result<{ questions_updated: number }>>;
+}
+
 interface LocalDbContextValue {
   db: LocalDb;
   screen: ScreenName;
@@ -193,6 +216,7 @@ interface LocalDbContextValue {
   conversation: ConversationControls;
   sources: SourcesControls;
   specs: SpecsControls;
+  guide: GuideControls;
 }
 
 const LocalDbContext = React.createContext<LocalDbContextValue | null>(null);
@@ -407,6 +431,51 @@ export function LocalDbProvider({
     () => ({ hydrated: factorySpecs !== null, openSource: (sourceId) => loadIntakeSourceAction(sourceId) }),
     [factorySpecs],
   );
+
+  // ------------------------------------------------------- the guided walk
+
+  // Undefined until the factory has answered once; null when nothing is imported.
+  const [nextStep, setNextStep] = React.useState<import("../factory/mcp").IntakeNextStep | null | undefined>(
+    undefined,
+  );
+
+  const reloadGuide = React.useCallback(async (id: string) => {
+    const result = await loadNextStepAction(id);
+    if (result.ok) setNextStep(result.data);
+  }, []);
+
+  React.useEffect(() => {
+    if (projectId === null) return;
+    let cancelled = false;
+    const load = () =>
+      loadNextStepAction(projectId).then((result) => {
+        if (!cancelled && result.ok) setNextStep(result.data);
+      });
+    load();
+    // Background extraction makes new decisions due; the same cadence as
+    // the graph keeps "what is next" current without anyone asking.
+    const timer = window.setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [projectId]);
+
+  const guide = React.useMemo<GuideControls>(() => {
+    const then = async <T,>(result: Result<T>): Promise<Result<T>> => {
+      if (projectId !== null) await reloadGuide(projectId);
+      return result;
+    };
+    return {
+      hydrated: nextStep !== undefined,
+      step: nextStep ?? null,
+      answer: async (questionId, text) => then(await answerAction(questionId, text)),
+      defer: async (questionId, reason) => then(await deferAction(questionId, reason)),
+      rebuild: async (sourceId) => then(await rebuildDraftAction(sourceId)),
+      propose: async (sourceId) => then(await proposeSourceAction(sourceId)),
+      suggestPaths: async (intakeId) => then(await suggestPathsAction(intakeId)),
+    };
+  }, [projectId, nextStep, reloadGuide]);
 
   const reloadConversations = React.useCallback(async (id: string) => {
     const result = await loadConversations(id);
@@ -627,8 +696,8 @@ export function LocalDbProvider({
   }, [projectId, workspaceUrl, factorySources, reloadSources, reloadConversations]);
 
   const value = React.useMemo(
-    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources, specs }),
-    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources, specs],
+    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources, specs, guide }),
+    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources, specs, guide],
   );
 
   return <LocalDbContext.Provider value={value}>{children}</LocalDbContext.Provider>;
@@ -690,6 +759,11 @@ export function useSources(): SourcesControls {
 /** The spec graph screen's on-demand read. */
 export function useSpecs(): SpecsControls {
   return useLocalDb().specs;
+}
+
+/** The one next step in building the specs, and the calls that take it (ADR-0039). */
+export function useGuide(): GuideControls {
+  return useLocalDb().guide;
 }
 
 function toSources(data: { servers: FactoryServer[]; intakes: FactoryIntake[] }): {

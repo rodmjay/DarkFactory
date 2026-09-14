@@ -53,6 +53,8 @@ import {
 import type { ConnectionRow, TurnRow } from "@/lib/local/schema";
 import type { CorpusArea } from "@/lib/factory/mcp";
 
+import { GuidePanel } from "./guide";
+
 export default function ConversationPage() {
   const conversations = useQuery((db) => db.conversations);
   const { activeId, error, dismissError } = useConversation();
@@ -100,6 +102,8 @@ export default function ConversationPage() {
             </Button>
           ) : null}
         </div>
+
+        <GuidePanel />
 
         <div ref={threadRef} className="min-h-0 flex-1 overflow-auto px-5 py-5">
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
