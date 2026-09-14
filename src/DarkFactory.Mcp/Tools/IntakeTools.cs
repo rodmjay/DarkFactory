@@ -92,6 +92,20 @@ public static class IntakeTools
             drift.Removed);
     }
 
+    [McpServerTool(Name = "df.intake.source"),
+     Description("One imported document: its full text, its current draft nodes, and every question raised about it.")]
+    public static async Task<IntakeSourceView> Source(
+        IntakeService intake,
+        [Description("The source id, from df.intake.status.")] string source_id,
+        CancellationToken cancellationToken = default)
+    {
+        var detail = await Errors.Surfacing(() => intake.GetSourceAsync(source_id, cancellationToken));
+        var s = detail.Source;
+        return new IntakeSourceView(
+            s.Id, s.IntakeId, s.Seq, s.SourceRef, s.Title, s.Status.ToString().ToLowerInvariant(), s.DraftRevision,
+            s.Content, detail.Draft, detail.Questions.Select(q => Row(q, s.SourceRef)).ToList(), s.Failure, s.AmendmentId);
+    }
+
     [McpServerTool(Name = "df.intake.guide"),
      Description("Set the project owner's standing guidance for an import — e.g. \"live scope only; deferred documents produce no nodes\". Every later extraction is shown it. Empty clears it.")]
     public static async Task<IntakeGuidance> Guide(
@@ -305,6 +319,20 @@ public sealed record IntakeExtractResult(
 public sealed record IntakeProposed(string SourceId, string AmendmentId, string Status);
 
 public sealed record IntakeGuidance(string IntakeId, string? Guidance);
+
+public sealed record IntakeSourceView(
+    string SourceId,
+    string IntakeId,
+    int Seq,
+    string SourceRef,
+    string Title,
+    string Status,
+    int DraftRevision,
+    string Content,
+    SpecDiffDocument? Draft,
+    IReadOnlyList<IntakeQuestionRow> Questions,
+    string? Failure,
+    string? AmendmentId);
 
 public sealed record IntakeListItem(
     string IntakeId,

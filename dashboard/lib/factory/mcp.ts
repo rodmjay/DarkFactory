@@ -433,6 +433,79 @@ export interface CorpusDrift {
   removed: string[];
 }
 
+/** `IntakeSourceRow` from `df.intake.status`. */
+export interface FactoryIntakeSourceRow {
+  source_id: string;
+  seq: number;
+  source_ref: string;
+  title: string;
+  status: string;
+  draft_revision: number;
+  nodes: number;
+  open_questions: number;
+  answered_questions: number;
+  deferred_questions: number;
+  resolved_questions: number;
+  amendment_id?: string | null;
+  failure?: string | null;
+}
+
+export interface FactoryIntakeStatus {
+  intake_id: string;
+  name: string;
+  sources: FactoryIntakeSourceRow[];
+}
+
+export function getIntakeStatus(intakeId: string): Promise<FactoryIntakeStatus> {
+  return callTool("df.intake.status", { intake_id: intakeId });
+}
+
+/** `SpecNodeSummary` from `df.specs.query`: a node in the graph proper. */
+export interface FactorySpecNode {
+  spec_id: string;
+  kind: string;
+  layer: string;
+  text?: string | null;
+  retired: boolean;
+}
+
+export async function querySpecNodes(projectId: string): Promise<FactorySpecNode[]> {
+  return (await callTool<FactorySpecNode[]>("df.specs.query", { project_id: projectId, limit: 1000 })) ?? [];
+}
+
+export interface FactoryIntakeQuestion {
+  question_id: string;
+  kind: string;
+  status: string;
+  question: string;
+  quote?: string | null;
+  answer?: string | null;
+  affects: number[];
+}
+
+/** `IntakeSourceView` from `df.intake.source`: one document's text, draft and questions. */
+export interface FactoryIntakeSource {
+  source_id: string;
+  intake_id: string;
+  seq: number;
+  source_ref: string;
+  title: string;
+  status: string;
+  draft_revision: number;
+  content: string;
+  draft?: {
+    creates: { kind: string; layer: string; text: string; rationale?: string | null }[];
+    edge_adds: { from_spec_id: string; to_spec_id: string; kind: string }[];
+  } | null;
+  questions: FactoryIntakeQuestion[];
+  failure?: string | null;
+  amendment_id?: string | null;
+}
+
+export function getIntakeSource(sourceId: string): Promise<FactoryIntakeSource> {
+  return callTool("df.intake.source", { source_id: sourceId });
+}
+
 export interface IntakeRefresh {
   intake_id: string;
   updated: number;

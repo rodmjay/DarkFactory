@@ -26,7 +26,9 @@ import {
   connectServerAction,
   driftAction,
   ingestSpecsAction,
+  loadIntakeSourceAction,
   loadSources,
+  loadSpecsOverview,
   previewCorpusAction,
   refreshIntakeAction,
   type Result,
@@ -45,6 +47,7 @@ import type {
   FactoryConversation,
   FactoryConversationDetail,
   FactoryIntake,
+  FactoryIntakeSource,
   FactoryProject,
   FactoryServer,
   IntakeRefresh,
@@ -53,6 +56,8 @@ import type {
   ConnectionRow,
   ConversationRow,
   DecisionRow,
+  GraphNodeRow,
+  ImportedSpecRow,
   IntakeRow,
   LocalDb,
   ProjectRow,
@@ -114,7 +119,7 @@ export type Command = FactoryCommand | PendingCommand;
  * this list is the progress bar, and it is in the code rather than in a
  * document that would drift from it.
  */
-export const WIRED_SCREENS: ScreenName[] = ["projects", "conversation"];
+export const WIRED_SCREENS: ScreenName[] = ["projects", "conversation", "specs"];
 
 /**
  * How current the mirror is.
@@ -163,6 +168,12 @@ export interface SourcesControls {
   refresh: (intakeId: string) => Promise<Result<IntakeRefresh>>;
 }
 
+/** The spec graph screen's one on-demand read: a document in full. */
+export interface SpecsControls {
+  hydrated: boolean;
+  openSource: (sourceId: string) => Promise<Result<FactoryIntakeSource>>;
+}
+
 interface LocalDbContextValue {
   db: LocalDb;
   screen: ScreenName;
@@ -181,6 +192,7 @@ interface LocalDbContextValue {
   register: (url: string, name?: string) => Promise<{ ok: boolean; error?: string }>;
   conversation: ConversationControls;
   sources: SourcesControls;
+  specs: SpecsControls;
 }
 
 const LocalDbContext = React.createContext<LocalDbContextValue | null>(null);
@@ -346,6 +358,56 @@ export function LocalDbProvider({
     };
   }, [projectId, workspaceUrl]);
 
+  // -------------------------------------------------------------- the graph
+
+  const [factorySpecs, setFactorySpecs] = React.useState<{
+    imported: ImportedSpecRow[];
+    nodes: GraphNodeRow[];
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (projectId === null) return;
+    let cancelled = false;
+    const load = () =>
+      loadSpecsOverview(projectId).then((result) => {
+        if (cancelled || !result.ok) return;
+        setFactorySpecs({
+          imported: result.data.imported.map((s) => ({
+            id: s.source_id,
+            intake_id: s.intake_id,
+            seq: s.seq,
+            source_ref: s.source_ref,
+            title: s.title,
+            status: s.status,
+            draft_revision: s.draft_revision,
+            nodes: s.nodes,
+            open_questions: s.open_questions,
+            failure: s.failure,
+          })),
+          nodes: result.data.nodes.map((n) => ({
+            spec_id: n.spec_id,
+            kind: n.kind,
+            layer: n.layer,
+            text: n.text ?? "",
+            retired: n.retired,
+          })),
+        });
+      });
+    load();
+    // Extraction moves documents along in the background; reading again on
+    // the same cadence as the connections is what makes that visible.
+    const timer = window.setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [projectId]);
+
+  const specs = React.useMemo<SpecsControls>(
+    () => ({ hydrated: factorySpecs !== null, openSource: (sourceId) => loadIntakeSourceAction(sourceId) }),
+    [factorySpecs],
+  );
+
   const reloadConversations = React.useCallback(async (id: string) => {
     const result = await loadConversations(id);
     if (result.ok) setFactoryConversations(result.data.map(toConversationRow));
@@ -464,6 +526,8 @@ export function LocalDbProvider({
         retrieval: [],
         connections: factorySources?.connections ?? [],
         intakes: factorySources?.intakes ?? [],
+        imported_specs: factorySpecs?.imported ?? [],
+        graph_nodes: factorySpecs?.nodes ?? [],
         thinking: thinkingIn !== null && thinkingIn === activeId,
         decision: { state: "undecided" },
       } as LocalDb;
@@ -482,7 +546,7 @@ export function LocalDbProvider({
     // are showing their prototypes, and putting a real project's name above
     // fixture counts would be the one thing this seam exists to prevent.
     return { ...base, projects, ...overlay } as LocalDb;
-  }, [scenario, overlay, factoryProjects, factoryConversations, thread, activeId, pendingTurn, thinkingIn, factorySources]);
+  }, [scenario, overlay, factoryProjects, factoryConversations, thread, activeId, pendingTurn, thinkingIn, factorySources, factorySpecs]);
 
   const dispatch = React.useCallback(
     (command: Command, args: Record<string, unknown> = {}) => {
@@ -563,8 +627,8 @@ export function LocalDbProvider({
   }, [projectId, workspaceUrl, factorySources, reloadSources, reloadConversations]);
 
   const value = React.useMemo(
-    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources }),
-    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources],
+    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources, specs }),
+    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources, specs],
   );
 
   return <LocalDbContext.Provider value={value}>{children}</LocalDbContext.Provider>;
@@ -621,6 +685,11 @@ export function useConversation(): ConversationControls {
 /** Connecting servers and ingesting specifications (the left panel). */
 export function useSources(): SourcesControls {
   return useLocalDb().sources;
+}
+
+/** The spec graph screen's on-demand read. */
+export function useSpecs(): SpecsControls {
+  return useLocalDb().specs;
 }
 
 function toSources(data: { servers: FactoryServer[]; intakes: FactoryIntake[] }): {

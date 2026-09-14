@@ -124,6 +124,29 @@ export interface IntakeRow {
   open_questions: number;
 }
 
+/** An imported document on its way to the graph (ADR-0037): pending, extracted, proposed. */
+export interface ImportedSpecRow {
+  id: string;
+  intake_id: string;
+  seq: number;
+  source_ref: string;
+  title: string;
+  status: string;
+  draft_revision: number;
+  nodes: number;
+  open_questions: number;
+  failure?: string | null;
+}
+
+/** A node in the graph proper — approved, as opposed to drafted. */
+export interface GraphNodeRow {
+  spec_id: string;
+  kind: string;
+  layer: string;
+  text: string;
+  retired: boolean;
+}
+
 /** What the architect retrieved for a turn — the "Looking at" panel. */
 export interface RetrievalRow {
   turn_id: string;
@@ -363,6 +386,10 @@ export interface LocalDb {
   connections: ConnectionRow[];
   /** The current project's imports. */
   intakes: IntakeRow[];
+  /** Every imported document, across the project's imports. */
+  imported_specs: ImportedSpecRow[];
+  /** The graph's nodes, as the factory holds them. */
+  graph_nodes: GraphNodeRow[];
   /**
    * The approval decision on the amendment currently in view.
    *

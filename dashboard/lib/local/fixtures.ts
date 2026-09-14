@@ -120,6 +120,8 @@ export function buildDb(scenario: Scenario): LocalDb {
     // from the factory, and the showcase has no state that needs them.
     connections: [],
     intakes: [],
+    imported_specs: [],
+    graph_nodes: [],
   };
 }
 

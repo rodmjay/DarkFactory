@@ -32,6 +32,9 @@ public sealed record IntakeQuestionWithSource(IntakeQuestion Question, string So
 
 public sealed record IntakeListing(Intake Intake, int Documents, int Extracted, int Proposed, int OpenQuestions);
 
+/// <summary>One imported document with everything intake knows about it: its text, its draft, its questions.</summary>
+public sealed record IntakeSourceDetail(IntakeSource Source, SpecDiffDocument? Draft, IReadOnlyList<IntakeQuestion> Questions);
+
 /// <summary>A hole as the model reported it, after validation.</summary>
 public sealed record IntakeHole(string? Id, string Kind, string Question, string? Quote, IReadOnlyList<int> Affects);
 
@@ -501,6 +504,25 @@ public sealed class IntakeService(
             Count(s.Id, IntakeQuestionStatus.Answered),
             Count(s.Id, IntakeQuestionStatus.Deferred),
             Count(s.Id, IntakeQuestionStatus.Resolved))).ToList());
+    }
+
+    /// <summary>
+    /// One imported document as the spec graph screen shows it: the text it
+    /// was imported with, the current draft, and every question raised about
+    /// it — so "where are the specs" has an answer before anything is approved.
+    /// </summary>
+    public async Task<IntakeSourceDetail> GetSourceAsync(string sourceId, CancellationToken cancellationToken = default)
+    {
+        var source = await db.IntakeSources.AsNoTracking().SingleOrDefaultAsync(s => s.Id == sourceId, cancellationToken)
+            ?? throw new InvalidOperationException($"No intake source '{sourceId}'.");
+
+        var questions = await db.IntakeQuestions.AsNoTracking()
+            .Where(q => q.SourceId == sourceId)
+            .OrderBy(q => q.CreatedAt).ThenBy(q => q.Id)
+            .ToListAsync(cancellationToken);
+
+        var draft = source.DraftJson is null ? null : JsonSerializer.Deserialize<SpecDiffDocument>(source.DraftJson);
+        return new IntakeSourceDetail(source, draft, questions);
     }
 
     /// <summary>A project's imports, oldest first, with how far along each is.</summary>

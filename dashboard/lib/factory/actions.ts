@@ -25,6 +25,12 @@ import {
   pullIntake,
   refreshIntake,
   registerServer,
+  getIntakeSource,
+  getIntakeStatus,
+  querySpecNodes,
+  type FactoryIntakeSource,
+  type FactoryIntakeSourceRow,
+  type FactorySpecNode,
   type IntakeRefresh,
   type CorpusArea,
   type CorpusDrift,
@@ -178,6 +184,33 @@ export async function ingestSpecsAction(
 
 export async function driftAction(intakeId: string): Promise<Result<CorpusDrift>> {
   return attempt(() => intakeDrift(intakeId));
+}
+
+// ---------------------------------------------------------------- the graph
+
+/**
+ * What the spec graph screen shows: every imported document with how far
+ * along it is, and the nodes actually in the graph. One read, so the two
+ * never disagree about which moment they describe.
+ */
+export async function loadSpecsOverview(
+  projectId: string,
+): Promise<Result<{ imported: (FactoryIntakeSourceRow & { intake_id: string })[]; nodes: FactorySpecNode[] }>> {
+  return attempt(async () => {
+    const intakes = await listIntakes(projectId);
+    const [statuses, nodes] = await Promise.all([
+      Promise.all(intakes.map((i) => getIntakeStatus(i.intake_id))),
+      querySpecNodes(projectId),
+    ]);
+    return {
+      imported: statuses.flatMap((s) => s.sources.map((source) => ({ ...source, intake_id: s.intake_id }))),
+      nodes,
+    };
+  });
+}
+
+export async function loadIntakeSourceAction(sourceId: string): Promise<Result<FactoryIntakeSource>> {
+  return attempt(() => getIntakeSource(sourceId));
 }
 
 export async function refreshIntakeAction(intakeId: string): Promise<Result<IntakeRefresh>> {

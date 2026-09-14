@@ -190,6 +190,20 @@ public sealed class IntakeServiceTests(SpecGraphTestFixture fixture)
         Assert.Single(result.OpenQuestions);
     }
 
+    [Fact]
+    public async Task ADocumentReadsBackWithItsTextItsDraftAndItsQuestions()
+    {
+        var (_, started) = await StartAsync();
+        await ExtractAsync(new FakeModelGateway().Responds(Response(Draft(Reserve), Hole(ReserveQuestion))), SwarmId(started));
+
+        await using var db = fixture.NewDb();
+        var detail = await Service(new FakeModelGateway(), db).GetSourceAsync(SwarmId(started));
+
+        Assert.Equal(Swarm, detail.Source.Content);
+        Assert.Equal(Reserve, Assert.Single(detail.Draft!.Creates).Text);
+        Assert.Equal(ReserveQuestion, Assert.Single(detail.Questions).Question);
+    }
+
     // ---- what blocks a proposal -------------------------------------------
 
     [Fact]

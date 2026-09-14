@@ -8,7 +8,25 @@ Renders:
   node.revisions         → revision list with Rationale (states: given, blank, absent)
   snapshot pair          → diff bands (added, changed, removed) with the previous text
 States covered: browse, snapshot compare, drifted node with detail, retired node
-Proposed additions: none
+Proposed additions: imported, awaiting the graph (ADR-0037) — built from existing components, below
+
+## Imported, awaiting the graph (added 2026-09-14)
+
+A project whose specifications were imported has them long before it has
+nodes: extraction drafts them, questions are answered, then they are
+proposed and approved. Until then the graph is empty and this screen, built
+only for nodes, answered "where are my specs?" with nothing.
+
+Without `?state=` the screen reads the factory and shows three columns:
+
+  imported documents      → list: status pill (pending, extracted, proposed, failed), draft node and open-question counts; search
+  graph nodes             → count by layer (LayerBadge), or an honest empty line
+  selected document       → draft nodes (LayerBadge, kind, text, rationale) and questions (kind, status, quote, answer)
+  its source text         → PayloadRenderer markdown, front matter stripped
+
+The prototype above stays reachable under `?state=`; when approved nodes
+are common, the browse/compare layout becomes the default again and this
+becomes one of its panes.
 
 ## Notes
 

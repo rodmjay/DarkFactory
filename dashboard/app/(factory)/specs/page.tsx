@@ -16,6 +16,7 @@ import {
   Button,
   Input,
   LayerBadge,
+  PayloadRenderer,
   Rationale,
   SpecId,
   SpecNodeCard,
@@ -25,10 +26,276 @@ import {
   format,
 } from "@dark-factory/ui";
 
-import { useQuery, useScenario } from "@/lib/local/store";
-import type { SpecNodeRow } from "@/lib/local/schema";
+import { usePrototype, useQuery, useScenario, useSpecs } from "@/lib/local/store";
+import type { GraphNodeRow, SpecNodeRow } from "@/lib/local/schema";
+import type { Result } from "@/lib/factory/actions";
+import type { FactoryIntakeSource } from "@/lib/factory/mcp";
 
+/**
+ * Without `?state=` the screen reads the factory. A project whose
+ * specifications were imported has them long before it has nodes, so the
+ * screen leads with what was imported and how far along each document is,
+ * with the graph's own nodes counted beside it — see docs/screens/specs.md,
+ * "Imported, awaiting the graph". The prototype stays under `?state=`.
+ */
 export default function SpecsPage() {
+  return usePrototype() ? <PrototypeSpecsPage /> : <LiveSpecsPage />;
+}
+
+function LiveSpecsPage() {
+  const imported = useQuery((db) => db.imported_specs);
+  const nodes = useQuery((db) => db.graph_nodes);
+  const specs = useSpecs();
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
+  const [detail, setDetail] = React.useState<{ id: string; result: Result<FactoryIntakeSource> } | null>(null);
+
+  const activeId = selectedId ?? imported[0]?.id ?? null;
+  const active = imported.find((s) => s.id === activeId);
+  const revision = active?.draft_revision ?? 0;
+  const openCount = active?.open_questions ?? 0;
+  const status = active?.status ?? "";
+
+  React.useEffect(() => {
+    if (activeId === null) return;
+    let cancelled = false;
+    specs.openSource(activeId).then((result) => {
+      if (!cancelled) setDetail({ id: activeId, result });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Re-read when the document moves on — a new draft, a new question, a
+    // new status — not on every poll; `specs` changes identity on each one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, revision, openCount, status]);
+
+  const needle = search.trim().toLowerCase();
+  const shown = needle
+    ? imported.filter((s) => s.title.toLowerCase().includes(needle) || s.source_ref.toLowerCase().includes(needle))
+    : imported;
+  const extracted = imported.filter((s) => s.status === "extracted" || s.status === "proposed").length;
+  const draftNodes = imported.reduce((sum, s) => sum + s.nodes, 0);
+  const open = imported.reduce((sum, s) => sum + s.open_questions, 0);
+  const data = detail?.id === activeId && detail.result.ok ? detail.result.data : null;
+  const error = detail?.id === activeId && !detail.result.ok ? detail.result.error : null;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-none items-center gap-4 border-b border-border px-5 py-3">
+        <h1 className="text-sm font-semibold">Spec graph</h1>
+        <span className="text-2xs text-muted">
+          {nodes.length} nodes in the graph · {imported.length} imported specs · {extracted} extracted ·{" "}
+          {draftNodes} draft nodes · {open} open questions
+        </span>
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-72 flex-none flex-col border-r border-border bg-card">
+          <div className="flex-none border-b border-border px-3 py-3">
+            <div className="text-xs font-medium text-secondary">In the graph</div>
+            {nodes.length === 0 ? (
+              <p className="mt-1 text-2xs text-muted">
+                No nodes yet. A document&apos;s draft becomes nodes when it is proposed and approved.
+              </p>
+            ) : (
+              <LayerCounts nodes={nodes} />
+            )}
+          </div>
+
+          <div className="flex-none px-2.5 pt-2.5">
+            <Input
+              placeholder="Search imported specs"
+              className="h-8 text-xs"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <div className="flex-none px-3 pt-2.5 pb-1 text-xs font-medium text-secondary">
+            Imported · {imported.length}
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
+            {!specs.hydrated ? (
+              <p className="px-2.5 py-2 text-2xs text-muted">Reading from the factory…</p>
+            ) : imported.length === 0 ? (
+              <p className="px-2.5 py-2 text-2xs text-muted">
+                Nothing imported yet. Ingest specs from the Sources panel on the conversation screen.
+              </p>
+            ) : null}
+            {shown.map((source) => (
+              <button
+                key={source.id}
+                type="button"
+                onClick={() => setSelectedId(source.id)}
+                className={cn(
+                  "flex w-full flex-col gap-0.5 rounded-control px-2.5 py-2 text-left",
+                  source.id === activeId ? "bg-sunken" : "hover:bg-sunken",
+                )}
+              >
+                <span className="flex items-center gap-1.5">
+                  <StatusPill status={source.status} />
+                  <span className="truncate text-xs font-medium text-primary">{source.title}</span>
+                </span>
+                <span className="truncate text-2xs text-muted">
+                  {shortRef(source.source_ref)}
+                  {source.nodes > 0 ? ` · ${source.nodes} nodes` : ""}
+                  {source.open_questions > 0 ? ` · ${source.open_questions} open` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto px-5 py-4">
+          {active ? (
+            <>
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h2 className="text-sm font-semibold text-primary">{active.title}</h2>
+                <span className="font-mono text-2xs text-muted">{shortRef(active.source_ref)}</span>
+                <StatusPill status={active.status} />
+                {active.draft_revision > 0 ? (
+                  <span className="text-2xs text-muted">draft revision {active.draft_revision}</span>
+                ) : null}
+              </div>
+
+              {error ? <p className="text-2xs text-status-failed-text">{error}</p> : null}
+              {active.failure ? (
+                <p className="rounded-control border border-status-failed-border bg-status-failed-fill px-3 py-2 text-2xs whitespace-pre-wrap text-status-failed-text">
+                  Extraction was refused: {active.failure}
+                </p>
+              ) : null}
+
+              <DraftNodes status={active.status} data={data} />
+              <Questions status={active.status} data={data} />
+            </>
+          ) : null}
+        </section>
+
+        <section className="flex w-[40%] flex-none flex-col gap-2 overflow-auto border-l border-border px-5 py-4">
+          <span className="text-xs font-medium text-secondary">Source document</span>
+          {data ? (
+            <PayloadRenderer payloads={[{ type: "markdown", text: withoutFrontMatter(data.content) }]} />
+          ) : active ? (
+            <p className="text-2xs text-muted">Reading…</p>
+          ) : null}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function DraftNodes({ status, data }: { status: string; data: FactoryIntakeSource | null }) {
+  const creates = data?.draft?.creates ?? [];
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium text-secondary">
+        Draft nodes{creates.length > 0 ? ` · ${creates.length}` : ""}
+      </h3>
+      {status === "pending" ? (
+        <p className="text-2xs text-muted">
+          Not extracted yet. Extraction turns this document into draft nodes — one rule, behaviour or
+          constraint each — and raises what it leaves open as questions.
+        </p>
+      ) : !data ? (
+        <p className="text-2xs text-muted">Reading…</p>
+      ) : creates.length === 0 ? (
+        <p className="text-2xs text-muted">This document yielded no nodes.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {creates.map((node, index) => (
+            <li key={index} className="flex flex-col gap-1 rounded-card border border-border bg-card px-3 py-2">
+              <span className="flex items-center gap-1.5">
+                <LayerBadge layer={node.layer} />
+                <span className="text-2xs text-muted">{node.kind}</span>
+              </span>
+              <span className="text-sm text-primary">{node.text}</span>
+              {node.rationale ? <span className="text-2xs text-muted">{node.rationale}</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function Questions({ status, data }: { status: string; data: FactoryIntakeSource | null }) {
+  const questions = data?.questions ?? [];
+  const open = questions.filter((q) => q.status === "open").length;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium text-secondary">
+        Questions{questions.length > 0 ? ` · ${open} open of ${questions.length}` : ""}
+      </h3>
+      {questions.length === 0 ? (
+        <p className="text-2xs text-muted">
+          {status === "pending" ? "None yet." : data ? "Extraction found nothing it would have to guess at." : ""}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {questions.map((question) => (
+            <li key={question.question_id} className="flex flex-col gap-1 rounded-card border border-border px-3 py-2">
+              <span className="flex items-center gap-1.5 text-2xs">
+                <span className="rounded-pill border border-border bg-sunken px-1.5 text-[10px] text-secondary">
+                  {question.kind.replaceAll("_", " ")}
+                </span>
+                <span className="text-muted">{question.status}</span>
+              </span>
+              <span className="text-sm text-primary">{question.question}</span>
+              {question.quote ? (
+                <span className="border-l-2 border-border pl-2 text-2xs text-muted">{question.quote}</span>
+              ) : null}
+              {question.answer ? <span className="text-2xs text-secondary">Answer: {question.answer}</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function LayerCounts({ nodes }: { nodes: GraphNodeRow[] }) {
+  const counts = new Map<string, number>();
+  for (const node of nodes) counts.set(node.layer, (counts.get(node.layer) ?? 0) + 1);
+
+  return (
+    <ul className="mt-1.5 flex flex-col gap-1">
+      {[...counts.entries()].sort().map(([layer, count]) => (
+        <li key={layer} className="flex items-center gap-1.5 text-2xs">
+          <LayerBadge layer={layer} />
+          <span className="ml-auto tnum text-muted">{count}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tone =
+    status === "extracted"
+      ? "border-status-passed-border bg-status-passed-fill text-status-passed-text"
+      : status === "proposed"
+        ? "border-accent-border bg-accent-fill text-accent-text"
+        : status === "failed"
+          ? "border-status-failed-border bg-status-failed-fill text-status-failed-text"
+          : "border-border bg-sunken text-muted";
+  return <span className={cn("shrink-0 rounded-pill border px-1.5 text-[10px]", tone)}>{status}</span>;
+}
+
+/** `moonbeam-specs:drones/0079-the-working-swarm` → `drones/0079-the-working-swarm`. */
+function shortRef(sourceRef: string): string {
+  const colon = sourceRef.indexOf(":");
+  return colon < 0 ? sourceRef : sourceRef.slice(colon + 1);
+}
+
+/** The metadata block is for tools; a reader wants the document. */
+function withoutFrontMatter(content: string): string {
+  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+}
+
+function PrototypeSpecsPage() {
   const graph = useQuery((db) => db.graph);
   const nodes = useQuery((db) => db.spec_nodes);
   const [scenario, setScenario] = useScenario();
