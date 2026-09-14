@@ -92,6 +92,18 @@ public static class IntakeTools
             drift.Removed);
     }
 
+    [McpServerTool(Name = "df.intake.guide"),
+     Description("Set the project owner's standing guidance for an import — e.g. \"live scope only; deferred documents produce no nodes\". Every later extraction is shown it. Empty clears it.")]
+    public static async Task<IntakeGuidance> Guide(
+        IntakeService intake,
+        [Description("The intake id.")] string intake_id,
+        [Description("The guidance, in plain sentences.")] string guidance,
+        CancellationToken cancellationToken = default)
+    {
+        var updated = await Errors.Surfacing(() => intake.GuideAsync(intake_id, guidance, cancellationToken));
+        return new IntakeGuidance(updated.Id, updated.Guidance);
+    }
+
     [McpServerTool(Name = "df.intake.refresh"),
      Description("Update an import from its corpus server: re-fetch edited documents nothing has been extracted from yet, add new ones in the imported areas, drop ones deleted or superseded at the source. Documents already extracted are reported, not changed.")]
     public static async Task<IntakeRefresh> Refresh(
@@ -291,6 +303,8 @@ public sealed record IntakeExtractResult(
     int TokensUsed);
 
 public sealed record IntakeProposed(string SourceId, string AmendmentId, string Status);
+
+public sealed record IntakeGuidance(string IntakeId, string? Guidance);
 
 public sealed record IntakeListItem(
     string IntakeId,

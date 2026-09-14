@@ -36,6 +36,13 @@ public sealed class Intake
 
     /// <summary>The corpus server it was pulled from (docs/adr/0038); null when submitted inline.</summary>
     public string? SourceServerId { get; init; }
+
+    /// <summary>
+    /// The project owner's standing decisions about what to extract — e.g.
+    /// "live scope only; deferred documents produce no nodes". Shown to
+    /// every extraction of this import.
+    /// </summary>
+    public string? Guidance { get; set; }
     public required string CreatedBy { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
 }
@@ -189,6 +196,9 @@ public sealed record IntakeContextPack
     [JsonPropertyName("questions")] public required IReadOnlyList<ContextIntakeQuestion> Questions { get; init; }
     [JsonPropertyName("previous_draft")] public string? PreviousDraft { get; init; }
     [JsonPropertyName("layers_in_use")] public required IReadOnlyList<string> LayersInUse { get; init; }
+
+    /// <summary>The import's guidance as it stood for this extraction.</summary>
+    [JsonPropertyName("guidance")] public string? Guidance { get; init; }
 
     /// <summary>The standards shown with the target, as <c>server:id@updated</c> — which revision of each rule it saw.</summary>
     [JsonPropertyName("standards")] public IReadOnlyList<string> Standards { get; init; } = [];

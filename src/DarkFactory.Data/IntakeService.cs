@@ -206,7 +206,7 @@ public sealed class IntakeService(
         var revision = source.DraftRevision + 1;
         var layers = LayersInUse(corpus.Where(s => s.Id != source.Id));
         var (standards, missingStandards) = await StandardsNamedAsync(source, cancellationToken);
-        var prefix = IntakePrompt.CacheablePrefix(corpus);
+        var prefix = IntakePrompt.CacheablePrefix(corpus, intake.Guidance);
         var system = IntakePrompt.SystemPrompt(source, revision, questions, source.DraftJson, layers, standards, missingStandards);
         var messages = new List<ModelMessage> { new(ModelRole.User, IntakePrompt.Instruction(source)) };
 
@@ -325,6 +325,23 @@ public sealed class IntakeService(
             .ToListAsync(cancellationToken);
 
         return new IntakeExtraction(source, Accepted: true, outcome.Reply ?? "", open, [], usage);
+    }
+
+    // ---- guidance ----------------------------------------------------------
+
+    /// <summary>
+    /// Records the project owner's standing decisions about the import.
+    /// Replaces rather than appends, so what every later extraction sees is
+    /// one current statement; empty clears it. Drafts already made are not
+    /// redone — re-extracting one is how it takes new guidance.
+    /// </summary>
+    public async Task<Intake> GuideAsync(string intakeId, string? guidance, CancellationToken cancellationToken = default)
+    {
+        var intake = await db.Intakes.SingleOrDefaultAsync(i => i.Id == intakeId, cancellationToken)
+            ?? throw new InvalidOperationException($"No intake '{intakeId}'.");
+        intake.Guidance = string.IsNullOrWhiteSpace(guidance) ? null : guidance.Trim();
+        await db.SaveChangesAsync(cancellationToken);
+        return intake;
     }
 
     // ---- answer, defer -----------------------------------------------------
@@ -678,6 +695,7 @@ public sealed class IntakeService(
                 .ToList(),
             PreviousDraft = source.DraftJson,
             LayersInUse = layers,
+            Guidance = intake.Guidance,
             Standards = standards.Select(s => $"{s.SourceRef}@{s.Updated}").ToList(),
             Skills = [IntakePrompt.IntakeSkill],
             AssembledAt = DateTimeOffset.UtcNow,

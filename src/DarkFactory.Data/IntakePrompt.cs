@@ -59,7 +59,7 @@ public static class IntakePrompt
     /// the response contract, and the corpus. Sent with a cache breakpoint
     /// after it (docs/adr/0032).
     /// </summary>
-    public static string CacheablePrefix(IReadOnlyList<IntakeSource> corpus)
+    public static string CacheablePrefix(IReadOnlyList<IntakeSource> corpus, string? guidance = null)
     {
         var builder = new StringBuilder();
 
@@ -73,6 +73,17 @@ public static class IntakePrompt
         builder.AppendLine($"## Standards ({standards.Layer}, from {standards.SourceRef})");
         builder.AppendLine(standards.Text);
         builder.AppendLine();
+
+        // Constant across the import, so it belongs in the cached half.
+        if (!string.IsNullOrWhiteSpace(guidance))
+        {
+            builder.AppendLine("## Guidance for this import, from the project owner");
+            builder.AppendLine("Standing decisions about what to extract. Follow them when deciding what becomes a node");
+            builder.AppendLine("and what becomes a question; they do not change the response format below.");
+            builder.AppendLine();
+            builder.AppendLine(guidance.Trim());
+            builder.AppendLine();
+        }
 
         builder.AppendLine("## How to answer");
         builder.AppendLine();
