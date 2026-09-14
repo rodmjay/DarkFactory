@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://darkfactory.dev/schemas/decision.schema.json",
+  "title": "Decision",
+  "description": "Something a person has to decide, with the paths open to them (ADR-0039). The one shape every 'this needs you' takes — an intake question, a scope conflict the architect found, a gap nobody specified — so the dashboard renders all of them as the same actionable card rather than as prose to be read and answered by typing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "options"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Stable within its source: an intake question id, or an id the proposer chose for this decision."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "The decision, as one question a person can answer."
+    },
+    "why": {
+      "type": "string",
+      "maxLength": 600,
+      "description": "Why it needs deciding now, in one or two sentences: what goes wrong if nobody does."
+    },
+    "source_ref": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "The document or node it is about, when there is one."
+    },
+    "kind": {
+      "type": "string",
+      "maxLength": 32,
+      "description": "What sort of decision — for an intake question, its hole kind (ambiguity, contradiction, …)."
+    },
+    "options": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "description": "The paths open, each with what choosing it means. At most one is recommended.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The choice, short enough for a button."
+          },
+          "consequence": {
+            "type": "string",
+            "maxLength": 400,
+            "description": "What follows from choosing it — the specification that results, what it rules out."
+          },
+          "recommended": { "type": "boolean" }
+        }
+      }
+    },
+    "allow_other": {
+      "type": "boolean",
+      "description": "Whether a person may answer in their own words instead. Defaults to true."
+    },
+    "allow_defer": {
+      "type": "boolean",
+      "description": "Whether it may be left open on purpose. Defaults to true."
+    }
+  }
+}

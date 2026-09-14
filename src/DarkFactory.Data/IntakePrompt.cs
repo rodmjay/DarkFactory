@@ -130,6 +130,10 @@ public static class IntakePrompt
             - "id" is null for a new hole, or the id of a question listed as [open] with the
               target that is still a hole. Never return the id of an answered or deferred
               question.
+            - "options" offers 2 to 4 answers the product owner could choose, each
+              { "label": "short, for a button", "consequence": "what choosing it commits to
+              or rules out, one sentence", "recommended": true } — mark recommended only when
+              the corpus clearly leans that way, and at most one.
             """);
         builder.AppendLine();
 
@@ -231,6 +235,65 @@ public static class IntakePrompt
 
     public static string Instruction(IntakeSource target) =>
         $"Extract `{target.SourceRef}` now. Reply with the single JSON object only.";
+
+    public const string PathsTemplateVersion = "intake-paths/1";
+
+    public const string PathsInstruction = "Suggest the paths now. Reply with the single JSON object only.";
+
+    /// <summary>
+    /// Offering paths for questions extraction raised (docs/adr/0039). The
+    /// scope document and the import's guidance are always shown, because
+    /// "what could the answer be" is mostly "what does the rest of the
+    /// product already commit to".
+    /// </summary>
+    public static string PathsPrompt(
+        string? guidance, IntakeSource scope, IntakeSource target, IReadOnlyList<IntakeQuestion> questions)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("""
+            You help a product owner answer questions that came up while their existing
+            specification documents were being turned into a specification graph.
+
+            For each question, offer 2 to 4 concrete answers they could choose. Give each a
+            short label (it goes on a button) and a one-sentence consequence: what choosing it
+            commits the specification to, or rules out. Base the options on what the documents
+            say or imply. Mark one "recommended" only when the documents clearly lean that way;
+            otherwise mark none. Do not answer for them, and do not add questions.
+
+            Reply with a single JSON object and nothing else:
+            { "paths": [ { "question_id": "…", "options": [ { "label": "…", "consequence": "…", "recommended": true } ] } ] }
+            """);
+
+        if (!string.IsNullOrWhiteSpace(guidance))
+        {
+            builder.AppendLine("## Guidance for this import, from the product owner");
+            builder.AppendLine(guidance.Trim());
+            builder.AppendLine();
+        }
+
+        if (scope.Id != target.Id)
+        {
+            builder.AppendLine($"## Scope document: `{scope.SourceRef}` — {scope.Title}");
+            builder.AppendLine(scope.Content.Trim());
+            builder.AppendLine();
+        }
+
+        builder.AppendLine($"## The document the questions are about: `{target.SourceRef}` — {target.Title}");
+        builder.AppendLine(target.Content.Trim());
+        builder.AppendLine();
+
+        builder.AppendLine("## Questions");
+        foreach (var question in questions)
+        {
+            builder.AppendLine($"- `{question.Id}` ({question.Kind}) {question.Question}");
+            if (!string.IsNullOrEmpty(question.Quote))
+            {
+                builder.AppendLine($"  About: \"{question.Quote}\"");
+            }
+        }
+
+        return builder.ToString();
+    }
 
     public static string RetryMessage(SchemaValidationResult validation) =>
         $"""

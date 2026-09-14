@@ -36,7 +36,11 @@ public sealed record IntakeListing(Intake Intake, int Documents, int Extracted, 
 public sealed record IntakeSourceDetail(IntakeSource Source, SpecDiffDocument? Draft, IReadOnlyList<IntakeQuestion> Questions);
 
 /// <summary>A hole as the model reported it, after validation.</summary>
-public sealed record IntakeHole(string? Id, string Kind, string Question, string? Quote, IReadOnlyList<int> Affects);
+public sealed record IntakeHole(
+    string? Id, string Kind, string Question, string? Quote, IReadOnlyList<int> Affects,
+    IReadOnlyList<IntakeOption>? Options = null);
+
+public sealed record IntakePaths(int QuestionsUpdated, int SourcesProcessed, ModelUsage Usage);
 
 /// <summary>
 /// Corpus intake (docs/adr/0037): extract, find holes, ask, fill, propose.
@@ -287,6 +291,10 @@ public sealed class IntakeService(
                     // Still a hole. The draft may have been renumbered, so
                     // what it affects is re-read from this extraction.
                     question.AffectsJson = JsonSerializer.Serialize(hole.Affects);
+                    if (hole.Options is { Count: > 0 } offered)
+                    {
+                        question.OptionsJson = JsonSerializer.Serialize(offered);
+                    }
                 }
                 else
                 {
@@ -314,6 +322,7 @@ public sealed class IntakeService(
                 Question = hole.Question,
                 Quote = hole.Quote,
                 AffectsJson = JsonSerializer.Serialize(hole.Affects),
+                OptionsJson = hole.Options is { Count: > 0 } offered ? JsonSerializer.Serialize(offered) : null,
                 Status = IntakeQuestionStatus.Open,
                 RaisedInRevision = revision,
                 CreatedAt = now,
@@ -851,9 +860,15 @@ public sealed class IntakeService(
                 errors.Add(new SchemaValidationError($"{at}/affects", "affects must be an array of indices"));
             }
 
+            IReadOnlyList<IntakeOption>? options = null;
+            if (element.TryGetProperty("options", out var optionsElement) && optionsElement.ValueKind != JsonValueKind.Null)
+            {
+                options = ParseOptions(optionsElement, $"{at}/options", errors);
+            }
+
             if (kind is not null && question is not null)
             {
-                holes.Add(new IntakeHole(id, kind, question, string.IsNullOrEmpty(quote) ? null : quote, affects));
+                holes.Add(new IntakeHole(id, kind, question, string.IsNullOrEmpty(quote) ? null : quote, affects, options));
             }
         }
 
@@ -866,6 +881,226 @@ public sealed class IntakeService(
             ? new Outcome(SchemaValidationResult.Valid, reply, draft, holes)
             : Refused(errors, reply);
     }
+
+    /// <summary>
+    /// Options as decision.schema.json has them: 2 to 4, each a short label
+    /// and an optional consequence, at most one recommended. Ids are the
+    /// factory's to assign (o1, o2…) — a model has no reason to choose them.
+    /// Violations are added to <paramref name="errors"/>; null is returned
+    /// when there were any.
+    /// </summary>
+    internal static IReadOnlyList<IntakeOption>? ParseOptions(JsonElement element, string at, List<SchemaValidationError> errors)
+    {
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            errors.Add(new SchemaValidationError(at, "options must be an array"));
+            return null;
+        }
+
+        var options = new List<IntakeOption>();
+        var before = errors.Count;
+        var index = 0;
+        foreach (var item in element.EnumerateArray())
+        {
+            var where = $"{at}/{index++}";
+            var label = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("label", out var l)
+                && l.ValueKind == JsonValueKind.String ? l.GetString()?.Trim() : null;
+            if (string.IsNullOrEmpty(label) || label.Length > 120)
+            {
+                errors.Add(new SchemaValidationError($"{where}/label", "each option needs a label of at most 120 characters"));
+                continue;
+            }
+
+            var consequence = item.TryGetProperty("consequence", out var c) && c.ValueKind == JsonValueKind.String
+                ? c.GetString()?.Trim()
+                : null;
+            if (consequence is { Length: > 400 })
+            {
+                errors.Add(new SchemaValidationError($"{where}/consequence", "a consequence must be at most 400 characters"));
+                continue;
+            }
+
+            var recommended = item.TryGetProperty("recommended", out var r) && r.ValueKind == JsonValueKind.True;
+            options.Add(new IntakeOption($"o{options.Count + 1}", label, string.IsNullOrEmpty(consequence) ? null : consequence, recommended));
+        }
+
+        if (errors.Count == before && (options.Count < 2 || options.Count > 4))
+        {
+            errors.Add(new SchemaValidationError(at, $"give 2 to 4 options, not {options.Count}"));
+        }
+        if (errors.Count == before && options.Count(o => o.Recommended) > 1)
+        {
+            errors.Add(new SchemaValidationError(at, "at most one option may be recommended"));
+        }
+
+        return errors.Count == before ? options : null;
+    }
+
+    // ---- paths -------------------------------------------------------------
+
+    /// <summary>
+    /// Offers paths for every open question that has none (docs/adr/0039):
+    /// one model call per document, shown the document, the import's scope
+    /// document and its guidance, returning 2–4 options per question with
+    /// what each commits to. Suggestions, not answers — a person still
+    /// chooses, or writes their own.
+    /// </summary>
+    public async Task<IntakePaths> SuggestPathsAsync(string intakeId, CancellationToken cancellationToken = default)
+    {
+        var intake = await db.Intakes.AsNoTracking().SingleOrDefaultAsync(i => i.Id == intakeId, cancellationToken)
+            ?? throw new InvalidOperationException($"No intake '{intakeId}'.");
+
+        var waiting = await db.IntakeQuestions
+            .Where(q => q.IntakeId == intakeId && q.Status == IntakeQuestionStatus.Open && q.OptionsJson == null)
+            .OrderBy(q => q.CreatedAt).ThenBy(q => q.Id)
+            .ToListAsync(cancellationToken);
+        if (waiting.Count == 0)
+        {
+            return new IntakePaths(0, 0, new ModelUsage(0, 0));
+        }
+
+        // The first document in corpus order sets scope (a northstar sorts
+        // first by its number); every question is answered against it.
+        var scope = await db.IntakeSources.AsNoTracking()
+            .Where(s => s.IntakeId == intakeId)
+            .OrderBy(s => s.Seq)
+            .FirstAsync(cancellationToken);
+        var agent = await teams.ResolveAsync(intake.ProjectId, AssignmentPoints.Conversation, cancellationToken);
+
+        var updated = 0;
+        var processed = 0;
+        var usage = new ModelUsage(0, 0);
+
+        foreach (var group in waiting.GroupBy(q => q.SourceId))
+        {
+            var source = await db.IntakeSources.AsNoTracking().SingleAsync(s => s.Id == group.Key, cancellationToken);
+            var questions = group.ToList();
+            var system = IntakePrompt.PathsPrompt(intake.Guidance, scope, source, questions);
+            var messages = new List<ModelMessage> { new(ModelRole.User, IntakePrompt.PathsInstruction) };
+
+            var packRef = await artifacts.PutForConversationAsync(
+                intake.OrgId, intake.ProjectId, intake.ConversationId, "IntakePathsPack",
+                JsonSerializer.Serialize(new
+                {
+                    intake_id = intake.Id,
+                    source_id = source.Id,
+                    scope_source_id = scope.Id,
+                    guidance = intake.Guidance,
+                    question_ids = questions.Select(q => q.Id),
+                    template = IntakePrompt.PathsTemplateVersion,
+                }),
+                cancellationToken);
+            var context = new ModelCallContext
+            {
+                OrgId = intake.OrgId,
+                ProjectId = intake.ProjectId,
+                StageId = StageId,
+                TaskId = source.Id,
+                TeamMemberId = agent.TeamMemberId,
+                ContextPackRef = ArtifactRef.Format(packRef.Id),
+                PromptTemplateVersion = IntakePrompt.PathsTemplateVersion,
+            };
+
+            var completion = await gateway.CompleteAsync(
+                new ModelRequest(agent.Deployment, system, messages, MaxOutputTokens: 8_000, Context: context),
+                cancellationToken);
+            usage = Add(usage, completion.Usage);
+            var (paths, errors) = ParsePaths(completion.Text, questions);
+
+            if (errors.Count > 0)
+            {
+                var retry = messages.ToList();
+                retry.Add(new ModelMessage(ModelRole.Assistant, completion.Text));
+                retry.Add(new ModelMessage(ModelRole.User,
+                    IntakePrompt.RetryMessage(new SchemaValidationResult(false, errors))));
+                var again = await gateway.CompleteAsync(
+                    new ModelRequest(agent.Deployment, system, retry, MaxOutputTokens: 8_000,
+                        Context: context with { Attempt = 2, Retried = true }),
+                    cancellationToken);
+                usage = Add(usage, again.Usage);
+                (paths, _) = ParsePaths(again.Text, questions);
+            }
+
+            // Whatever validated is kept; a question still without paths is
+            // answered in one's own words, which is always allowed.
+            foreach (var question in questions)
+            {
+                if (paths.TryGetValue(question.Id, out var options))
+                {
+                    question.OptionsJson = JsonSerializer.Serialize(options);
+                    updated++;
+                }
+            }
+            processed++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return new IntakePaths(updated, processed, usage);
+    }
+
+    private static (Dictionary<string, IReadOnlyList<IntakeOption>> Paths, List<SchemaValidationError> Errors) ParsePaths(
+        string text, IReadOnlyList<IntakeQuestion> questions)
+    {
+        var errors = new List<SchemaValidationError>();
+        var paths = new Dictionary<string, IReadOnlyList<IntakeOption>>(StringComparer.Ordinal);
+        var asked = questions.Select(q => q.Id).ToHashSet(StringComparer.Ordinal);
+
+        try
+        {
+            using var document = JsonDocument.Parse(ArchitectPrompt.StripFences(text));
+            if (!document.RootElement.TryGetProperty("paths", out var array) || array.ValueKind != JsonValueKind.Array)
+            {
+                errors.Add(new SchemaValidationError("(root)", "reply with one JSON object with a \"paths\" array"));
+                return (paths, errors);
+            }
+
+            var index = 0;
+            foreach (var item in array.EnumerateArray())
+            {
+                var at = $"/paths/{index++}";
+                var id = item.TryGetProperty("question_id", out var q) && q.ValueKind == JsonValueKind.String ? q.GetString() : null;
+                if (id is null || !asked.Contains(id))
+                {
+                    errors.Add(new SchemaValidationError($"{at}/question_id", $"'{id}' is not one of the questions asked"));
+                    continue;
+                }
+                if (!item.TryGetProperty("options", out var options))
+                {
+                    errors.Add(new SchemaValidationError($"{at}/options", "each entry needs options"));
+                    continue;
+                }
+
+                var parsed = ParseOptions(options, $"{at}/options", errors);
+                if (parsed is not null)
+                {
+                    paths[id] = parsed;
+                }
+            }
+
+            foreach (var missing in asked.Where(id => !paths.ContainsKey(id)))
+            {
+                if (!errors.Any(e => e.Message.Contains(missing, StringComparison.Ordinal)))
+                {
+                    errors.Add(new SchemaValidationError("/paths", $"no options were given for question '{missing}'"));
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            errors.Add(new SchemaValidationError("(root)", "the response was not a single JSON object"));
+        }
+
+        return (paths, errors);
+    }
+
+    private static ModelUsage Add(ModelUsage a, ModelUsage b) => a with
+    {
+        InputTokens = a.InputTokens + b.InputTokens,
+        OutputTokens = a.OutputTokens + b.OutputTokens,
+        CachedInputTokens = a.CachedInputTokens + b.CachedInputTokens,
+        CacheWriteInputTokens = a.CacheWriteInputTokens + b.CacheWriteInputTokens,
+        ThinkingTokens = a.ThinkingTokens + b.ThinkingTokens,
+    };
 
     private static string Rooted(string location) =>
         location.StartsWith('/') ? location : location == "(root)" ? "" : "/" + location;

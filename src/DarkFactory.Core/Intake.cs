@@ -150,6 +150,14 @@ public sealed class IntakeQuestion
 
     /// <summary>Indices into the current draft's <c>creates</c> whose wording depends on the answer, as a JSON array.</summary>
     public required string AffectsJson { get; set; }
+
+    /// <summary>
+    /// The paths open to whoever answers — 2 to 4 <see cref="IntakeOption"/>s
+    /// as JSON (docs/adr/0039). Null until extraction or a paths suggestion
+    /// supplies them; a question without options can still be answered in
+    /// one's own words.
+    /// </summary>
+    public string? OptionsJson { get; set; }
     public required IntakeQuestionStatus Status { get; set; }
 
     /// <summary>The answer, or for a deferred question, why it was left open.</summary>
@@ -166,6 +174,13 @@ public sealed class IntakeQuestion
     public int? IncorporatedInRevision { get; set; }
     public required DateTimeOffset CreatedAt { get; init; }
 }
+
+/// <summary>One path open to whoever answers a question (contracts/schemas/decision.schema.json's option).</summary>
+public sealed record IntakeOption(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("consequence")] string? Consequence,
+    [property: JsonPropertyName("recommended")] bool Recommended);
 
 /// <summary>One document of a stored corpus artifact.</summary>
 public sealed record IntakeCorpusDocument(

@@ -106,6 +106,17 @@ public static class IntakeTools
             s.Content, detail.Draft, detail.Questions.Select(q => Row(q, s.SourceRef)).ToList(), s.Failure, s.AmendmentId);
     }
 
+    [McpServerTool(Name = "df.intake.suggest_paths"),
+     Description("Offer 2–4 answers, each with its consequence, for every open question on an import that has none (ADR-0039). One model call per document. Suggestions only; a person still chooses.")]
+    public static async Task<IntakePathsResult> SuggestPaths(
+        IntakeService intake,
+        [Description("The intake id.")] string intake_id,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await Errors.Surfacing(() => intake.SuggestPathsAsync(intake_id, cancellationToken));
+        return new IntakePathsResult(result.QuestionsUpdated, result.SourcesProcessed, result.Usage.TotalTokens);
+    }
+
     [McpServerTool(Name = "df.intake.guide"),
      Description("Set the project owner's standing guidance for an import — e.g. \"live scope only; deferred documents produce no nodes\". Every later extraction is shown it. Empty clears it.")]
     public static async Task<IntakeGuidance> Guide(
@@ -262,7 +273,8 @@ public static class IntakeTools
         JsonSerializer.Deserialize<int[]>(q.AffectsJson) ?? [],
         q.Answer,
         q.RaisedInRevision,
-        q.IncorporatedInRevision);
+        q.IncorporatedInRevision,
+        q.OptionsJson is null ? [] : JsonSerializer.Deserialize<IntakeOption[]>(q.OptionsJson) ?? []);
 }
 
 public sealed record IntakeSourceArg(string SourceRef, string Title, string Content);
@@ -301,7 +313,11 @@ public sealed record IntakeQuestionRow(
     IReadOnlyList<int> Affects,
     string? Answer,
     int RaisedInRevision,
-    int? IncorporatedInRevision);
+    int? IncorporatedInRevision,
+    // The paths open to whoever answers (ADR-0039); empty until suggested.
+    IReadOnlyList<IntakeOption> Options);
+
+public sealed record IntakePathsResult(int QuestionsUpdated, int SourcesProcessed, int TokensUsed);
 
 public sealed record IntakeExtractResult(
     string SourceId,
