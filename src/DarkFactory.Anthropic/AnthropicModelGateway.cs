@@ -156,12 +156,12 @@ public sealed class AnthropicModelGateway : IModelGateway
             .Where(block => block.Type is "thinking" or "redacted_thinking")
             .Sum(block => Estimate(block.Thinking ?? block.Text));
 
-        var usage = new ModelUsage(
-            InputTokens: completion.Usage?.InputTokens ?? 0,
-            OutputTokens: completion.Usage?.OutputTokens ?? 0,
-            CachedInputTokens: completion.Usage?.CacheReadInputTokens ?? 0,
-            CacheWriteInputTokens: completion.Usage?.CacheCreationInputTokens ?? 0,
-            ThinkingTokens: thinking);
+        var usage = ToUsage(
+            completion.Usage?.InputTokens ?? 0,
+            completion.Usage?.CacheReadInputTokens,
+            completion.Usage?.CacheCreationInputTokens,
+            completion.Usage?.OutputTokens ?? 0,
+            thinking);
 
         // The deployment name, not the model id: a caller asked for
         // "architect" and an audit record should say what was asked for as
@@ -179,6 +179,27 @@ public sealed class AnthropicModelGateway : IModelGateway
             ModelFamily = model,
             StopReason = completion.StopReason,
         };
+    }
+
+    /// <summary>
+    /// The Messages API reports <c>input_tokens</c> as the input AFTER the
+    /// last cache breakpoint only — cache reads and cache writes are
+    /// reported beside it, not inside it. <see cref="ModelUsage"/> carries
+    /// them as portions of the input, so the total is the sum of all three.
+    /// Taking <c>input_tokens</c> alone recorded a 100k-token cached corpus
+    /// prompt as a few thousand tokens, and every budget and cost built on
+    /// it under-counted in the flattering direction.
+    /// </summary>
+    public static ModelUsage ToUsage(int inputTokens, int? cacheReadInputTokens, int? cacheCreationInputTokens, int outputTokens, int thinking)
+    {
+        var read = cacheReadInputTokens ?? 0;
+        var write = cacheCreationInputTokens ?? 0;
+        return new ModelUsage(
+            InputTokens: inputTokens + read + write,
+            OutputTokens: outputTokens,
+            CachedInputTokens: read,
+            CacheWriteInputTokens: write,
+            ThinkingTokens: thinking);
     }
 
     /// <summary>

@@ -56,6 +56,19 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
     {
         var live = await DescribeAsync(url, cancellationToken);
 
+        // docs/adr/0038, as amended: a standards server is the org's, whoever
+        // connected it; anything else connected to a project must not say it
+        // serves a different one. Both settled before anything is stored.
+        var isStandards = string.Equals(live.Domain, StandardsIngestService.Domain, StringComparison.Ordinal);
+        if (isStandards)
+        {
+            projectId = null;
+        }
+        else if (projectId is not null)
+        {
+            await EnsureServesProjectAsync(url, live, projectId, cancellationToken);
+        }
+
         // A supplied manifest is validated against the same published
         // schema as the live response. It is the same shape and it is going
         // to be diffed against a live response, so accepting a malformed
@@ -117,6 +130,15 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
             // blocks a fresh insert on.
             server.RemovedAt = null;
 
+            if (isStandards)
+            {
+                server.ProjectId = null;
+            }
+            else if (projectId is not null)
+            {
+                server.ProjectId = projectId;
+            }
+
             // A manifest is only replaced when a new one is supplied.
             // Otherwise the manifest is the claim of record and the whole
             // point of the diff is that live may have drifted from it.
@@ -126,14 +148,93 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
             }
         }
 
+        // It answered moments ago, so registration is also its first health
+        // check (docs/adr/0038): the monitor's next look is a full interval
+        // away rather than immediately repeating what was just established.
+        server.LastCheckedAt = now;
+        server.LastSeenAt = now;
+        server.ConsecutiveFailures = 0;
+        server.UnreachableSince = null;
+        server.LastError = null;
+        server.NextCheckAt = now + ServerHealthService.HealthyInterval;
+
         // Persisted before conformance so the results have a server row to
         // point at, and so a crash mid-check leaves a registered server
         // with no conformance rather than conformance with no server.
         await db.SaveChangesAsync(cancellationToken);
 
+        var results = await ConformAsync(server, diff, live.Capabilities, cancellationToken);
+        return new ServerRegistration(server, live, diff, results);
+    }
+
+    /// <summary>
+    /// One workspace can hold many projects, each served at its own address
+    /// (docs/conventions/corpus.md). A server that says which project it
+    /// serves is only connected to that one; connecting drones to smashhit's
+    /// address would import the wrong game's specifications with nothing to
+    /// say so. A server that names no project is taken at its word.
+    /// </summary>
+    private async Task EnsureServesProjectAsync(
+        string url, DescribeResponse live, string projectId, CancellationToken cancellationToken)
+    {
+        if (!live.EffectiveConfig.TryGetValue("project", out var value) || value.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        var serves = value.GetString()!;
+        var project = await db.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Id == projectId, cancellationToken)
+            ?? throw new ServerRegistrationException($"There is no project '{projectId}' to connect '{url}' to.");
+
+        if (!string.Equals(serves, project.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ServerRegistrationException(
+                $"'{url}' serves project '{serves}', not '{project.Name}'. " +
+                $"Connect '{project.Name}' to its own address — for Moonbeam, …/projects/{project.Name}/mcp.");
+        }
+    }
+
+    /// <summary>
+    /// Re-establishes what registration established — the manifest/live
+    /// diff and conformance — for a server already in the registry. This is
+    /// what healing does once a server answers again (docs/adr/0038), and
+    /// what happens when a server starts saying something new about itself.
+    /// </summary>
+    public async Task<IReadOnlyList<ConformanceResult>> ReverifyAsync(
+        Server server, DescribeResponse live, CancellationToken cancellationToken = default)
+    {
+        var liveJson = JsonSerializer.Serialize(live);
+
+        // Registered without a manifest, a server's "manifest" is only its
+        // first describe, not a claim anyone made. Diffing a later describe
+        // against it would mark every upgraded server degraded for having
+        // changed, so such a manifest moves with the live answer. A manifest
+        // somebody actually supplied stays the claim of record.
+        DescribeResponse manifest;
+        if (string.Equals(server.ManifestJson, server.LiveDescribeJson, StringComparison.Ordinal))
+        {
+            server.ManifestJson = liveJson;
+            manifest = live;
+        }
+        else
+        {
+            manifest = DescribeSchema.TryParse(server.ManifestJson, out var parsed).IsValid ? parsed! : live;
+        }
+
+        server.Name = live.Name;
+        server.Domain = live.Domain;
+        server.ConventionVersion = live.ConventionVersion;
+        server.LiveDescribeJson = liveJson;
+
+        return await ConformAsync(server, ManifestLiveDiff.Compute(manifest, live), live.Capabilities, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ConformanceResult>> ConformAsync(
+        Server server, ManifestLiveDiff diff, IReadOnlyList<string> capabilities, CancellationToken cancellationToken)
+    {
         var conformanceRunId = Ulid.NewUlid();
         var results = await new ConformanceChecker(probe).RunAsync(
-            server.Id, url, conformanceRunId, live.Capabilities, cancellationToken);
+            server.Id, server.Url, conformanceRunId, capabilities, cancellationToken);
 
         db.ConformanceResults.AddRange(results);
 
@@ -142,8 +243,7 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
         server.LastConformanceAt = DateTimeOffset.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
-
-        return new ServerRegistration(server, live, diff, results);
+        return results;
     }
 
     /// <summary>
@@ -164,10 +264,30 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
         return anyFailed || !diff.IsEmpty ? ServerStatus.Degraded : ServerStatus.Conformant;
     }
 
+    /// <summary>
+    /// How long registration waits before asking again after a miss that
+    /// may not repeat. A server mid-restart is the common case when someone
+    /// has just started it and registered straight away; failing that
+    /// registration would make connecting feel fragile for no reason.
+    /// </summary>
+    public static readonly IReadOnlyList<TimeSpan> DescribeRetryDelays = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)];
+
     /// <summary>Calls df.describe and validates the answer. Throws with the schema violations when it doesn't hold up.</summary>
     private async Task<DescribeResponse> DescribeAsync(string url, CancellationToken cancellationToken)
     {
         var result = await probe.CallAsync(url, DescribeTool, new Dictionary<string, object?>(), DescribeDeadline, cancellationToken);
+
+        // Only a retryable miss is asked again. A permanent one — no such
+        // tool, a refused URL — is the same answer however often it is asked.
+        foreach (var delay in DescribeRetryDelays)
+        {
+            if (result.Ok || result.Failure != FailureClass.Retryable)
+            {
+                break;
+            }
+            await Task.Delay(delay, cancellationToken);
+            result = await probe.CallAsync(url, DescribeTool, new Dictionary<string, object?>(), DescribeDeadline, cancellationToken);
+        }
 
         if (!result.Ok)
         {

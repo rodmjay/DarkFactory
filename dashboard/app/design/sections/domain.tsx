@@ -7,6 +7,7 @@ import {
   BatchCard,
   CodeDiff,
   CostBar,
+  DecisionCard,
   DependencyGraph,
   MetricTile,
   PayloadRenderer,
@@ -35,7 +36,7 @@ export function DomainComponents() {
     <Section
       id="domain"
       title="Domain components"
-      note="What the product is actually made of. Typed against contracts/schemas/ where a schema exists — today that is spec_diff and describe — and against types proposed in packages/ui/src/types where one does not. Fixtures are the real 3d acceptance run's ids and token counts, not invented ones."
+      note="What the product is actually made of. Typed against contracts/schemas/ where a schema exists — today that is spec_diff, describe and decision — and against types proposed in packages/ui/src/types where one does not. Fixtures are the real 3d acceptance run's ids and token counts, not invented ones."
     >
       <Block
         title="StageTimeline"
@@ -148,6 +149,38 @@ export function DomainComponents() {
       </Block>
 
       <Block
+        title="DecisionCard"
+        note="Something a person has to decide, with the paths open (ADR-0041) — an intake question, a scope conflict the architect found, a gap nobody specified. The recommended option is marked, never preselected: it is the proposer's view, and choosing it is still the person's decision. Leaving it open asks for a reason."
+      >
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Frame label="open — with a recommended option">
+            <DecisionCard decision={fixture.decisions.mapScope} onChoose={() => {}} onOther={() => {}} onDefer={() => {}} />
+          </Frame>
+          <Frame label="open — a contradiction: no own words, no leaving open">
+            <DecisionCard decision={fixture.decisions.lowBattery} onChoose={() => {}} />
+          </Frame>
+          <Frame label="answering in own words">
+            <DecisionCard decision={fixture.decisions.cargoMix} defaultMode="other" onChoose={() => {}} onOther={() => {}} onDefer={() => {}} />
+          </Frame>
+          <Frame label="leaving open — a reason is required">
+            <DecisionCard decision={fixture.decisions.cargoMix} defaultMode="defer" onChoose={() => {}} onOther={() => {}} onDefer={() => {}} />
+          </Frame>
+          <Frame label="answered — the recommended option">
+            <DecisionCard decision={fixture.decisions.mapScope} state={{ status: "answered", choice: "earth-only", by: "Rod Johnson" }} />
+          </Frame>
+          <Frame label="deferred">
+            <DecisionCard
+              decision={fixture.decisions.cargoMix}
+              state={{ status: "deferred", reason: "Waiting on the cargo design in 0067 — revisit once its slots are drawn." }}
+            />
+          </Frame>
+          <Frame label="read-only — no callbacks, as PayloadRenderer draws it" className="lg:col-span-2">
+            <DecisionCard decision={fixture.decisions.mapScope} />
+          </Frame>
+        </div>
+      </Block>
+
+      <Block
         title="AmendmentRow"
         note="A backlog item, draggable into a batch (ADR-0029). The handle is always visible: ordering is the interaction on this screen, and a control you have to hover to find reads as absent on a list of forty."
       >
@@ -205,9 +238,9 @@ export function DomainComponents() {
 
       <Block
         title="PersonaCard"
-        note="Free and priced are the same layout with a different figure. Making the paid variant louder would turn a roster into a storefront, and the community tier is a first-class plugin surface (ADR-0019), not a lesser one."
+        note="Free and priced are the same layout with a different figure. Making the paid variant louder would turn a roster into a storefront, and the community tier is a first-class plugin surface (ADR-0019), not a lesser one. `installed` and `on this team` are separate states: a persona can be bought for the org and used by nobody, and collapsing them makes “why is this not running my work” unanswerable from the card."
       >
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <Frame label="free">
             <PersonaCard persona={fixture.personas.free} modelFamily="claude-sonnet-5" role="implementer" speed="balanced" />
           </Frame>
@@ -216,6 +249,9 @@ export function DomainComponents() {
           </Frame>
           <Frame label="installed">
             <PersonaCard persona={fixture.personas.installed} modelFamily="claude-opus-5" role="reviewer" speed="quick" />
+          </Frame>
+          <Frame label="on this team">
+            <PersonaCard persona={fixture.personas.onTeam} modelFamily="claude-sonnet-5" role="implementer" speed="deliberate" onTeam />
           </Frame>
         </div>
       </Block>
@@ -390,6 +426,10 @@ const EXAMPLES: { label: string; payload: Payload }[] = [
   {
     label: "approval_card",
     payload: { type: "approval_card", approval: fixture.approvals.awaiting },
+  },
+  {
+    label: "decision",
+    payload: { type: "decision", ...fixture.decisions.lowBattery },
   },
   {
     label: "dependency_graph",

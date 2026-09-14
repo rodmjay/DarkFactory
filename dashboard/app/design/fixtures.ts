@@ -2,6 +2,7 @@ import type {
   Amendment,
   Approval,
   Batch,
+  Decision,
   Payload,
   Persona,
   Provenance,
@@ -315,6 +316,63 @@ export const approvals: Record<string, Approval> = {
   },
 };
 
+/** Decisions from the drones intake (ADR-0041): an intake question with a
+ *  recommendation, and a contradiction that must be settled one way or the
+ *  other. */
+export const decisions: Record<"mapScope" | "lowBattery" | "cargoMix", Decision> = {
+  mapScope: {
+    id: "q-0064-map-scope",
+    title: "Is the build Earth only, or several maps?",
+    why: "0064 and 0069 describe their systems across every map. Until the scope is settled neither can be extracted without guessing which parts are in.",
+    source_ref: "drones/0064-worlds-and-their-science.md",
+    kind: "ambiguity",
+    options: [
+      {
+        id: "earth-only",
+        label: "Earth only",
+        consequence: "0064 and 0069 extract only their Earth parts; 0070 and 0071 stay deferred.",
+        recommended: true,
+      },
+      {
+        id: "several-maps",
+        label: "Several maps",
+        consequence: "0070 alloys and 0071 travel come back into scope, and extraction waits on both.",
+      },
+    ],
+  },
+  lowBattery: {
+    id: "q-0079-low-battery",
+    title: "When a drone's battery runs low mid-job, does it finish or return?",
+    why: "One passage says a working drone runs the whole cycle itself; another that it always keeps enough energy to get home. Both cannot hold.",
+    source_ref: "drones/0079-the-working-swarm.md",
+    kind: "contradiction",
+    allow_other: false,
+    allow_defer: false,
+    options: [
+      {
+        id: "return",
+        label: "Return to base",
+        consequence: "The reserve wins. Jobs become resumable.",
+      },
+      {
+        id: "finish",
+        label: "Finish the job first",
+        consequence: "The cycle wins. The return reserve becomes a soft limit.",
+      },
+    ],
+  },
+  cargoMix: {
+    id: "q-0074-cargo-mix",
+    title: "Can one drone carry more than one resource type at once?",
+    source_ref: "drones/0074-cargo-the-depot-and-loss.md",
+    kind: "missing",
+    options: [
+      { id: "single", label: "One type per trip", recommended: true },
+      { id: "mixed", label: "Mixed loads", consequence: "Cargo needs slots, and loss applies per slot." },
+    ],
+  },
+};
+
 export const amendments: Record<string, Amendment> = {
   default: {
     id: "01M1SCBR4C1DV27DC1R8AHEBA0",
@@ -467,6 +525,17 @@ export const personas: Record<string, Persona> = {
     author: "Cambrian QA",
     description: "A reviewer that writes the failing test first and only then reads the diff.",
     price_usd: 25,
+    installed: true,
+  },
+  // Owned *and* assigned to this project's team — the state that answers
+  // "is this persona actually doing any of my work".
+  onTeam: {
+    id: "p4",
+    name: "Hollis",
+    author: "Ovrline Standards",
+    description:
+      "A deliberate implementer that reads the standards server before it writes, and refuses work that contradicts a layer's conventions.",
+    price_usd: 40,
     installed: true,
   },
 };

@@ -47,6 +47,17 @@ public sealed class RunStateMachine(
             throw new InvalidOperationException($"No stage handler registered for '{stage}'.");
         }
 
+        // docs/adr/0038: a stage whose workspace is unreachable is not
+        // attempted. Attempting it would fail, the failure would count, and
+        // a server restart would cost a run its retries — or the run itself.
+        // It waits instead, and the health monitor is what ends the wait.
+        var unreachable = await UnreachableWorkspaceAsync(run, cancellationToken);
+        if (unreachable is not null)
+        {
+            await WaitForServerAsync(run, stage, unreachable, cancellationToken);
+            return stage;
+        }
+
         StageOutcome outcome;
         try
         {
@@ -234,6 +245,64 @@ public sealed class RunStateMachine(
 
         run.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private Task<Server?> UnreachableWorkspaceAsync(Run run, CancellationToken cancellationToken) =>
+        (from project in dbContext.Projects.AsNoTracking()
+         join server in dbContext.Servers.AsNoTracking()
+             on new { project.OrgId, Url = project.WorkspaceMcpUrl } equals new { server.OrgId, server.Url }
+         where project.Id == run.ProjectId
+             && server.RemovedAt == null
+             && server.Status == ServerStatus.Unreachable
+         select server).FirstOrDefaultAsync(cancellationToken);
+
+    /// <summary>
+    /// Holds the run until the server's next check. The lease is the clock,
+    /// exactly as it is for retry backoff: the run stays claimed and becomes
+    /// claimable again when the monitor is next due to look. No checkpoint is
+    /// written, because the stage never ran — an attempt it did not make
+    /// must not count against it.
+    /// </summary>
+    private async Task WaitForServerAsync(Run run, StageId stage, Server server, CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        run.Status = RunStatus.Running;
+        run.LeaseExpiresAt = server.NextCheckAt is { } next && next > now
+            ? next
+            : now + ServerHealthService.HealthyInterval;
+        run.UpdatedAt = now;
+
+        // Said once per wait, not once per look: a run held through a
+        // five-minute outage would otherwise post a dozen identical events.
+        var lastEvent = await dbContext.Events.AsNoTracking()
+            .Where(e => e.RunId == run.Id)
+            .OrderByDescending(e => e.CreatedAt)
+            .Select(e => e.Type)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (lastEvent != "run.waiting_for_server")
+        {
+            dbContext.Events.Add(new Event
+            {
+                Id = Guid.NewGuid().ToString("n"),
+                RunId = run.Id,
+                Type = "run.waiting_for_server",
+                DataJson = JsonSerializer.Serialize(new
+                {
+                    stage = stage.ToString(),
+                    server = server.Name,
+                    url = server.Url,
+                    unreachable_since = server.UnreachableSince,
+                    last_error = server.LastError,
+                }),
+                CreatedAt = now,
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Run {RunId} is waiting at {Stage}: workspace server {Server} is unreachable.",
+            run.Id, stage, server.Name);
     }
 
     private static Event StageFailedEvent(string runId, StageId stage, StageOutcome.Failed failed, DateTimeOffset now) => new()

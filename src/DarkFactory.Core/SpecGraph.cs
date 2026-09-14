@@ -175,15 +175,26 @@ public enum ServerTier { BuiltIn, Premium, Community }
 /// or a conformance probe failed. A server that claims a capability it does
 /// not have is degraded, not rejected — it stays usable for everything that
 /// did pass, and the dashboard shows what didn't.
+///
+/// <c>Unreachable</c> is docs/adr/0038's: the server stopped answering the
+/// health check. It says nothing about what the server can do — only that
+/// the factory cannot currently ask it — and it ends by itself: the next
+/// answer re-verifies the server and sets whichever status that earns.
 /// </summary>
-public enum ServerStatus { Registered, Conformant, Degraded, Failed }
+public enum ServerStatus { Registered, Conformant, Degraded, Failed, Unreachable }
 
 /// <summary>docs/adr/0018 and docs/adr/0019.</summary>
 public sealed class Server
 {
     public required string Id { get; init; }
     public required string OrgId { get; init; }
-    public string? ProjectId { get; init; }
+    /// <summary>
+    /// The project this server serves, or null for an org-wide server — a
+    /// standards server always (docs/adr/0038: standards are what the
+    /// organisation decided, shared by every project), and a workspace,
+    /// which a project is bound to by URL instead.
+    /// </summary>
+    public string? ProjectId { get; set; }
 
     /// <summary>
     /// The MCP endpoint. Together with <see cref="OrgId"/> this is the
@@ -215,6 +226,22 @@ public sealed class Server
     public required ServerStatus Status { get; set; }
     public required DateTimeOffset RegisteredAt { get; init; }
     public DateTimeOffset? LastConformanceAt { get; set; }
+
+    // docs/adr/0038 — how the connection stands now. Written by every health
+    // check, so the registry's answer to "is it up" is at most one check old.
+
+    public DateTimeOffset? LastCheckedAt { get; set; }
+    public DateTimeOffset? LastSeenAt { get; set; }
+
+    /// <summary>The first miss of the current run of misses; null while it answers.</summary>
+    public DateTimeOffset? UnreachableSince { get; set; }
+    public int ConsecutiveFailures { get; set; }
+    public string? LastError { get; set; }
+    public DateTimeOffset? NextCheckAt { get; set; }
+
+    /// <summary>When it last answered again after an outage and was re-verified.</summary>
+    public DateTimeOffset? HealedAt { get; set; }
+    public int HealCount { get; set; }
 
     /// <summary>
     /// Removal is a retirement, not a delete. A server's conformance
@@ -275,6 +302,13 @@ public sealed class StandardsIndexEntry
     public required string Layer { get; init; }
     public required string Text { get; init; }
     public required string SourceRef { get; init; }
+
+    // Written by ingest (StandardsIngestService, docs/adr/0023).
+    public string? Title { get; init; }
+
+    /// <summary>The server's own <c>updated</c> for the standard — what a later ingest compares, and what a context pack records.</summary>
+    public string? Updated { get; init; }
+    public DateTimeOffset? IngestedAt { get; init; }
 }
 
 // AgentPolicy (docs/adr/0022) is superseded by team_members and

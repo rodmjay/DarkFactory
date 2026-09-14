@@ -19,6 +19,7 @@ import {
 import { Textarea } from "../ui/textarea";
 import { ApprovalCard } from "./approval-card";
 import { CodeDiff } from "./code-diff";
+import { DecisionCard } from "./decision-card";
 import { DependencyGraph } from "./dependency-graph";
 import { MetricTile } from "./metric-tile";
 import { SpecDiff } from "./spec-diff";
@@ -134,6 +135,12 @@ function One({ payload }: { payload: Payload }) {
 
     case "form":
       return <PayloadForm payload={payload} />;
+
+    // Read-only here: answering is a command the screen owns, so a screen
+    // that wants the card live intercepts `decision` the way the
+    // conversation screen intercepts `approval_card`.
+    case "decision":
+      return <DecisionCard decision={payload} />;
 
     default:
       return <Unknown payload={payload} />;

@@ -88,7 +88,7 @@ public sealed class RecordingModelGateway(
             OutputTokens = usage.OutputTokens,
             ThinkingTokens = usage.ThinkingTokens,
             LatencyMs = completion.LatencyMs,
-            Cost = null,
+            Cost = ModelPricing.CostUsd(completion.ModelFamily ?? request.Deployment, usage),
 
             Retried = context.Retried,
             Steered = context.Steered,

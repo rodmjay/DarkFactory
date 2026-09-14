@@ -42,6 +42,11 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
     public DbSet<ConformanceResult> ConformanceResults => Set<ConformanceResult>();
     public DbSet<StandardsIndexEntry> StandardsIndex => Set<StandardsIndexEntry>();
 
+    // docs/adr/0037 — corpus intake. Drafts and questions, not the graph.
+    public DbSet<Intake> Intakes => Set<Intake>();
+    public DbSet<IntakeSource> IntakeSources => Set<IntakeSource>();
+    public DbSet<IntakeQuestion> IntakeQuestions => Set<IntakeQuestion>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Project>(e =>
@@ -143,6 +148,41 @@ public sealed class DarkFactoryDbContext(DbContextOptions<DarkFactoryDbContext> 
         });
 
         ConfigureSpecGraph(modelBuilder);
+        ConfigureIntake(modelBuilder);
+    }
+
+    private static void ConfigureIntake(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Intake>(e =>
+        {
+            e.HasKey(i => i.Id);
+            e.Property(i => i.CorpusSha256).HasMaxLength(64);
+            e.HasIndex(i => i.ProjectId);
+            e.HasOne<Project>().WithMany().HasForeignKey(i => i.ProjectId);
+            e.HasOne<Conversation>().WithMany().HasForeignKey(i => i.ConversationId);
+        });
+
+        modelBuilder.Entity<IntakeSource>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(s => s.ContentSha256).HasMaxLength(64);
+            e.HasIndex(s => new { s.IntakeId, s.SourceRef }).IsUnique();
+            e.HasIndex(s => new { s.IntakeId, s.Seq }).IsUnique();
+            e.HasOne<Intake>().WithMany().HasForeignKey(s => s.IntakeId);
+            e.HasOne<Amendment>().WithMany().HasForeignKey(s => s.AmendmentId).IsRequired(false);
+        });
+
+        modelBuilder.Entity<IntakeQuestion>(e =>
+        {
+            e.HasKey(q => q.Id);
+            e.Property(q => q.Kind).HasMaxLength(32);
+            e.Property(q => q.Status).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(q => new { q.IntakeId, q.Status });
+            e.HasIndex(q => q.SourceId);
+            e.HasOne<Intake>().WithMany().HasForeignKey(q => q.IntakeId);
+            e.HasOne<IntakeSource>().WithMany().HasForeignKey(q => q.SourceId);
+        });
     }
 
     private static void ConfigureSpecGraph(ModelBuilder modelBuilder)

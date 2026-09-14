@@ -280,20 +280,31 @@ public sealed class ServerRegistryTests(SpecGraphTestFixture fixture)
             $"{c.Tool} was called with a deadline of {c.Deadline}"));
     }
 
+    /// <summary>
+    /// Reversed by docs/adr/0038. This used to assert a directory per pass;
+    /// conformance now re-runs on every heal, and a directory per pass left a
+    /// new folder in the customer's working tree after every restart, with no
+    /// delete in the workspace convention to clean it up. A pass is told
+    /// apart by its conformance run id, which is where that belongs.
+    /// </summary>
     [Fact]
-    public async Task TheScratchDirectoryIsUniquePerConformancePass()
+    public async Task EveryConformancePassUsesOneScratchDirectoryAndIsIdentifiedByItsResults()
     {
         var url = Url();
 
         var probeA = FakeServerProbe.HealthyWorkspace();
-        await RegisterAsync(probeA, url);
+        var first = await RegisterAsync(probeA, url);
         var probeB = FakeServerProbe.HealthyWorkspace();
-        await RegisterAsync(probeB, url);
+        var second = await RegisterAsync(probeB, url);
 
-        var first = (string)Assert.Single(probeA.CallsTo("df.exec.run")).Arguments["cwd"]!;
-        var second = (string)Assert.Single(probeB.CallsTo("df.exec.run")).Arguments["cwd"]!;
+        var firstCwd = (string)Assert.Single(probeA.CallsTo("df.exec.run")).Arguments["cwd"]!;
+        var secondCwd = (string)Assert.Single(probeB.CallsTo("df.exec.run")).Arguments["cwd"]!;
 
-        Assert.NotEqual(first, second);
+        Assert.Equal(ConformanceChecker.ScratchDirectory, firstCwd);
+        Assert.Equal(firstCwd, secondCwd);
+        Assert.NotEqual(
+            first.Conformance.Select(c => c.ConformanceRunId).Distinct().Single(),
+            second.Conformance.Select(c => c.ConformanceRunId).Distinct().Single());
     }
 
     [Fact]

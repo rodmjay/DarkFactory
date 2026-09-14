@@ -100,6 +100,26 @@ public sealed class ModelCallRecordingTests(SpecGraphTestFixture fixture)
         Assert.Equal("factory://artifacts/ctx", row.ContextPackRef);
         Assert.Equal("architect/1", row.PromptTemplateVersion);
         Assert.Equal(["skill@v1"], row.SkillRevisions);
+
+        // No listed price for a fake model, so no invented cost.
+        Assert.Null(row.Cost);
+    }
+
+    [Fact]
+    public async Task ACallToAPricedModelRecordsWhatItCost()
+    {
+        var (run, agent) = await SeedAsync();
+        var inner = new FakeModelGateway().RespondsWithUsage("ok", new ModelUsage(
+            InputTokens: 1000, OutputTokens: 300, CachedInputTokens: 700, CacheWriteInputTokens: 120), "claude-opus-5");
+
+        await using (var db = fixture.NewDb())
+        {
+            await Recorder(inner, db).CompleteAsync(Call(agent, run, attempt: 1));
+        }
+
+        await using var verify = fixture.NewDb();
+        var row = Assert.Single(await verify.ModelCalls.AsNoTracking().Where(c => c.RunId == run.Id).ToListAsync());
+        Assert.Equal(0.0095m, row.Cost);
     }
 
     [Fact]

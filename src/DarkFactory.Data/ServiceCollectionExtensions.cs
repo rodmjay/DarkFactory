@@ -25,6 +25,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SpecDiffTranslator>();
         services.AddScoped<TeamService>();
         services.AddScoped<ConversationService>();
+        services.AddScoped<IntakeService>();
+        services.AddScoped<CorpusImporter>();
+        services.AddScoped<StandardsIngestService>();
+        services.AddScoped<ServerHealthService>();
         services.AddScoped<ProjectService>();
         services.AddScoped<WorkService>();
         services.AddScoped<ServerRegistry>();

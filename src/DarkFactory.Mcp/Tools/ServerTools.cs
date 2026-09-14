@@ -58,6 +58,29 @@ public static class ServerTools
         return servers.Select(ServerSummary.From).ToList();
     }
 
+    [McpServerTool(Name = "df.servers.check"),
+     Description("Check a server now rather than at its next scheduled check: a handshake, and full re-verification if it was down or has changed. Returns its status afterwards.")]
+    public static async Task<ServerCheckResult> Check(
+        ServerHealthService health,
+        ServerRegistry registry,
+        IConfiguration configuration,
+        [Description("The server id returned by df.servers.list.")] string server_id,
+        CancellationToken cancellationToken = default)
+    {
+        var orgId = ResolveOrgId(configuration);
+        var check = await Errors.Surfacing(() => health.CheckNowAsync(orgId, server_id, cancellationToken));
+        var server = (await registry.ListAsync(orgId, cancellationToken)).Single(s => s.Id == server_id);
+        return new ServerCheckResult(check.Outcome.ToString(), ServerSummary.From(server));
+    }
+
+    [McpServerTool(Name = "df.standards.ingest"),
+     Description("Copy a standards server's documents into the factory's index now (docs/adr/0023). Happens on its own at registration and whenever the server is re-verified or heals; this is for asking again.")]
+    public static async Task<StandardsIngest> IngestStandards(
+        StandardsIngestService standards,
+        [Description("The standards server's id, from df.servers.list.")] string server_id,
+        CancellationToken cancellationToken = default) =>
+        await Errors.Surfacing(() => standards.IngestAsync(server_id, cancellationToken));
+
     [McpServerTool(Name = "df.servers.remove"),
      Description("Retire a registered server. Refused while active runs still reference it.")]
     public static async Task<ServerSummary> Remove(
@@ -89,12 +112,31 @@ public sealed record ServerSummary(
     string Status,
     string? ManifestDiff,
     DateTimeOffset RegisteredAt,
-    DateTimeOffset? LastConformanceAt)
+    DateTimeOffset? LastConformanceAt,
+    // docs/adr/0038: how the connection stands now, not at registration.
+    DateTimeOffset? LastCheckedAt,
+    DateTimeOffset? LastSeenAt,
+    DateTimeOffset? UnreachableSince,
+    int ConsecutiveFailures,
+    string? LastError,
+    DateTimeOffset? NextCheckAt,
+    DateTimeOffset? HealedAt,
+    int HealCount,
+    // The project a server was registered for; null for org-wide servers and
+    // for a workspace, which a project is bound to by URL instead.
+    string? ProjectId,
+    // What the server said it serves — a project, a repo — or null when it
+    // serves no single one (docs/adr/0038). See ServerScope.
+    string? Scope)
 {
     public static ServerSummary From(Server s) => new(
         s.Id, s.Url, s.Name, s.Domain, s.Tier.ToString(), s.ConventionVersion,
-        s.Status.ToString(), s.ManifestDiffJson, s.RegisteredAt, s.LastConformanceAt);
+        s.Status.ToString(), s.ManifestDiffJson, s.RegisteredAt, s.LastConformanceAt,
+        s.LastCheckedAt, s.LastSeenAt, s.UnreachableSince, s.ConsecutiveFailures, s.LastError,
+        s.NextCheckAt, s.HealedAt, s.HealCount, s.ProjectId, ServerScope.Of(s.Domain, s.LiveDescribeJson));
 }
+
+public sealed record ServerCheckResult(string Outcome, ServerSummary Server);
 
 public sealed record CapabilityResult(string Capability, string Status, string? Detail, long DurationMs);
 

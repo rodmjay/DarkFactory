@@ -365,6 +365,35 @@ export const manifest: DesignSystemManifest = {
         "Rejection requires a reason and approval does not. A rejection that says only 'no' sends the proposer back to guess; approval needs none because the diff already says what was agreed to.",
     },
     {
+      component: "DecisionCard",
+      group: "domain",
+      summary: "Something a person has to decide: the question, why now, 2–4 options with their consequences, and ways to answer in one's own words or leave it open.",
+      props: [
+        { name: "decision", type: "Decision", required: true, note: "The `decision` payload, with or without its `type`." },
+        {
+          name: "state",
+          type: "{ status: 'open' } | { status: 'answered'; choice: string; by?: string } | { status: 'deferred'; reason: string }",
+          note: "`choice` is an option id, or the person's own words when it matches none. Defaults to open.",
+        },
+        { name: "busy", type: "boolean", note: "An answer is in flight; everything is disabled." },
+        { name: "onChoose", type: "(optionId: string) => void" },
+        { name: "onOther", type: "(text: string) => void" },
+        { name: "onDefer", type: "(reason: string) => void" },
+        { name: "defaultMode", type: "'choose' | 'other' | 'defer'", note: "Which way of answering is open on first render." },
+      ],
+      states: [
+        "open with a recommended option",
+        "open without own-words or leave-open",
+        "answering in own words",
+        "leaving open",
+        "answered",
+        "deferred",
+      ],
+      shape: "contracts/schemas/decision.schema.json; ADR-0041",
+      constraint:
+        "A recommended option is marked, never preselected — it is the proposer's view and choosing it is still the person's decision. Leaving a decision open requires a reason. With no callbacks the card is read-only and keeps full contrast: a consequence dimmed to half opacity is one nobody reads.",
+    },
+    {
       component: "AmendmentRow",
       group: "domain",
       summary: "A backlog item, draggable into a batch.",
@@ -410,12 +439,13 @@ export const manifest: DesignSystemManifest = {
         { name: "modelFamily", type: "string", required: true, note: "Required by ADR-0028: a price without a model is unreadable." },
         { name: "speed", type: "SpeedPreset" },
         { name: "role", type: "string" },
+        { name: "onTeam", type: "boolean", note: "Assigned to this project's team, not merely owned." },
         { name: "onInstall", type: "(persona: Persona) => void" },
       ],
-      states: ["free", "priced", "installed"],
+      states: ["free", "priced", "installed", "on this team"],
       shape: "ADR-0028 (personas deferred)",
       constraint:
-        "Free and priced are the same layout with a different figure. Making the paid variant louder turns a roster into a storefront, and the community tier is a first-class plugin surface.",
+        "Free and priced are the same layout with a different figure. Making the paid variant louder turns a roster into a storefront, and the community tier is a first-class plugin surface. `installed` and `on this team` stay separate: a persona can be bought for the org and used by nobody, and collapsing them makes \"why is this not running my work\" unanswerable from the card.",
     },
     {
       component: "ServerCard",
@@ -425,10 +455,10 @@ export const manifest: DesignSystemManifest = {
         { name: "server", type: "Server", required: true },
         { name: "onAuthorize", type: "(server: Server) => void" },
       ],
-      states: ["conformant", "degraded", "unreachable", "built-in-connector"],
+      states: ["conformant", "degraded", "unreachable", "built-in-connector (not authorized)"],
       shape: "contracts/schemas/describe.schema.json; ADR-0018, ADR-0019",
       constraint:
-        "Capabilities carry their conformance result — a server that claims df.vcs.open_pr and one that has demonstrated it are different things. `degraded` names the failing capability: that is the difference between a status and a diagnosis. effective_config is rendered, which is why the schema forbids secrets in it.",
+        "Capabilities carry their conformance result — a server that claims df.vcs.open_pr and one that has demonstrated it are different things. `degraded` names the failing capability: that is the difference between a status and a diagnosis. A built-in connector that has not been authorized shows `not authorized` rather than a health, because nothing has contacted it and `conformant` would assert a check that never ran. effective_config is rendered, which is why the schema forbids secrets in it.",
     },
     {
       component: "MetricTile",
@@ -506,6 +536,7 @@ export const manifest: DesignSystemManifest = {
         "code_diff",
         "form",
         "metric",
+        "decision",
         "a reply carrying three payloads",
         "unknown type",
       ],

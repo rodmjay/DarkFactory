@@ -26,7 +26,21 @@ namespace DarkFactory.Data;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(MarkdownPayload), "markdown")]
 [JsonDerivedType(typeof(SpecDiffPayload), "spec_diff")]
+[JsonDerivedType(typeof(DecisionPayload), "decision")]
 public abstract record RenderPayload;
+
+/// <summary>
+/// Something the architect needs the person to decide, with the paths open
+/// (docs/adr/0041, contracts/schemas/decision.schema.json). Answering it is
+/// the next turn.
+/// </summary>
+public sealed record DecisionPayload(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("why"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Why,
+    [property: JsonPropertyName("options")] IReadOnlyList<IntakeOption> Options,
+    [property: JsonPropertyName("allow_other")] bool AllowOther,
+    [property: JsonPropertyName("allow_defer")] bool AllowDefer) : RenderPayload;
 
 public sealed record MarkdownPayload(
     [property: JsonPropertyName("text")] string Text) : RenderPayload;
@@ -43,6 +57,22 @@ public sealed record ConversationTurnResult(
     string? AmendmentId,
     string ContextRef,
     ModelUsage Usage);
+
+/// <summary>A conversation as a list shows it: enough to say where it stands without opening it.</summary>
+public sealed record ConversationListing(
+    Conversation Conversation,
+    int TurnCount,
+    DateTimeOffset UpdatedAt,
+    int Amendments,
+    int AwaitingAmendments,
+    bool IsIntake);
+
+/// <summary>Where one of a conversation's amendments stands, and why, if it was refused.</summary>
+public sealed record AmendmentState(
+    string Id, AmendmentStatus Status, string? TurnId, DateTimeOffset CreatedAt, string? RejectedReason);
+
+public sealed record ConversationThread(
+    ConversationListing Listing, IReadOnlyList<Turn> Turns, IReadOnlyList<AmendmentState> Amendments);
 
 /// <summary>
 /// The conversation (docs/adr/0017) — the product, not a job-submission
@@ -95,6 +125,109 @@ public sealed class ConversationService(
         db.Conversations.Add(conversation);
         await db.SaveChangesAsync(cancellationToken);
         return conversation;
+    }
+
+    // ---- reads ------------------------------------------------------------
+
+    /// <summary>A project's conversations, most recently active first.</summary>
+    public async Task<IReadOnlyList<ConversationListing>> ListAsync(
+        string projectId, CancellationToken cancellationToken = default)
+    {
+        var conversations = await db.Conversations.AsNoTracking()
+            .Where(c => c.ProjectId == projectId)
+            .ToListAsync(cancellationToken);
+
+        return (await ListingsAsync(conversations, cancellationToken))
+            .OrderByDescending(l => l.UpdatedAt)
+            .ThenByDescending(l => l.Conversation.Id)
+            .ToList();
+    }
+
+    /// <summary>
+    /// One conversation's whole thread: every turn with the payloads it was
+    /// stored with, and where each amendment it produced stands now. The
+    /// payloads are returned as written rather than rebuilt, so a thread
+    /// reads back exactly as it was answered.
+    /// </summary>
+    public async Task<ConversationThread> GetAsync(string conversationId, CancellationToken cancellationToken = default)
+    {
+        var conversation = await db.Conversations.AsNoTracking()
+            .SingleOrDefaultAsync(c => c.Id == conversationId, cancellationToken)
+            ?? throw new InvalidOperationException($"No conversation '{conversationId}'.");
+
+        var turns = await db.Turns.AsNoTracking()
+            .Where(t => t.ConversationId == conversationId)
+            .OrderBy(t => t.Seq)
+            .ToListAsync(cancellationToken);
+
+        var amendments = await db.Amendments.AsNoTracking()
+            .Where(a => a.ConversationId == conversationId)
+            .OrderBy(a => a.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var ids = amendments.Select(a => a.Id).ToList();
+        var rejections = await db.Approvals.AsNoTracking()
+            .Where(a => a.TargetType == ApprovalTargetType.Amendment
+                && a.Decision == ApprovalDecision.Rejected
+                && ids.Contains(a.TargetId))
+            .ToListAsync(cancellationToken);
+
+        var listing = (await ListingsAsync([conversation], cancellationToken)).Single();
+        return new ConversationThread(
+            listing,
+            turns,
+            amendments.Select(a => new AmendmentState(
+                a.Id,
+                a.Status,
+                a.TurnId,
+                a.CreatedAt,
+                rejections.Where(r => r.TargetId == a.Id).OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Reason))
+                .ToList());
+    }
+
+    private async Task<List<ConversationListing>> ListingsAsync(
+        IReadOnlyList<Conversation> conversations, CancellationToken cancellationToken)
+    {
+        var ids = conversations.Select(c => c.Id).ToList();
+
+        var turns = await db.Turns.AsNoTracking()
+            .Where(t => ids.Contains(t.ConversationId))
+            .GroupBy(t => t.ConversationId)
+            .Select(g => new { ConversationId = g.Key, Count = g.Count(), Last = g.Max(t => t.CreatedAt) })
+            .ToListAsync(cancellationToken);
+
+        var amendments = await db.Amendments.AsNoTracking()
+            .Where(a => ids.Contains(a.ConversationId))
+            .Select(a => new { a.ConversationId, a.Status, a.CreatedAt })
+            .ToListAsync(cancellationToken);
+
+        // An intake's conversation is the thread its proposals are filed
+        // under (docs/adr/0037). It is listed like any other, but a reader
+        // needs to know it is an import rather than a discussion.
+        var intakes = (await db.Intakes.AsNoTracking()
+            .Where(i => ids.Contains(i.ConversationId))
+            .Select(i => i.ConversationId)
+            .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+
+        return conversations.Select(c =>
+        {
+            var t = turns.FirstOrDefault(x => x.ConversationId == c.Id);
+            var mine = amendments.Where(a => a.ConversationId == c.Id).ToList();
+            var updated = new[]
+            {
+                c.CreatedAt,
+                t?.Last ?? c.CreatedAt,
+                mine.Count == 0 ? c.CreatedAt : mine.Max(a => a.CreatedAt),
+            }.Max();
+
+            return new ConversationListing(
+                c,
+                t?.Count ?? 0,
+                updated,
+                mine.Count,
+                mine.Count(a => a.Status == AmendmentStatus.Proposed),
+                intakes.Contains(c.Id));
+        }).ToList();
     }
 
     public async Task<ConversationTurnResult> TurnAsync(
@@ -213,6 +346,13 @@ public sealed class ConversationService(
             payloads.Add(new MarkdownPayload(ArchitectPrompt.CouldNotProposeMarkdown(validation.Result)));
         }
 
+        // What the architect needs decided goes after its prose, as cards
+        // the person answers by choosing (docs/adr/0041).
+        if (parsed?.Decisions is { Count: > 0 } asked)
+        {
+            payloads.AddRange(asked);
+        }
+
         var assistantTurn = new Turn
         {
             Id = Ulid.NewUlid(),
@@ -302,9 +442,103 @@ public sealed class ConversationService(
                 .Select(t => new ContextTurn(t.Seq, t.Role.ToString().ToLowerInvariant(), t.Content))
                 .ToList(),
             Skills = [ArchitectPrompt.ArchitectSkill],
+            Connections = await ConnectionsAsync(conversation.ProjectId, cancellationToken),
+            Imports = await ImportsAsync(conversation.ProjectId, cancellationToken),
             AssembledAt = DateTimeOffset.UtcNow,
             Attempt = attempt,
         };
+    }
+
+    /// <summary>
+    /// The project's servers: its workspace, which is bound by URL, and every
+    /// server registered for the project. Status is the health monitor's
+    /// latest word (docs/adr/0038), so "connected" means answered within the
+    /// last check, not registered once.
+    /// </summary>
+    private async Task<IReadOnlyList<ContextConnection>> ConnectionsAsync(string projectId, CancellationToken cancellationToken)
+    {
+        var project = await db.Projects.AsNoTracking().SingleAsync(p => p.Id == projectId, cancellationToken);
+
+        // Its own servers, its workspace by URL, and the org's standards —
+        // which every project shares (docs/adr/0038).
+        var servers = await db.Servers.AsNoTracking()
+            .Where(s => s.RemovedAt == null && s.OrgId == project.OrgId
+                && (s.ProjectId == project.Id
+                    || s.Url == project.WorkspaceMcpUrl
+                    || (s.ProjectId == null && s.Domain == StandardsIngestService.Domain)))
+            .OrderBy(s => s.Domain).ThenBy(s => s.Name)
+            .ToListAsync(cancellationToken);
+
+        return servers
+            .Select(s => new ContextConnection(
+                s.Name, s.Domain, s.Url, s.Status.ToString(), s.LastSeenAt, s.UnreachableSince, s.LastError,
+                ServerScope.Of(s.Domain, s.LiveDescribeJson)))
+            .ToList();
+    }
+
+    /// <summary>The most documents listed per import; past that the prompt says how many more.</summary>
+    public const int ImportDocumentLimit = 200;
+
+    private async Task<IReadOnlyList<ContextImport>> ImportsAsync(string projectId, CancellationToken cancellationToken)
+    {
+        var intakes = await db.Intakes.AsNoTracking()
+            .Where(i => i.ProjectId == projectId)
+            .OrderBy(i => i.CreatedAt)
+            .ToListAsync(cancellationToken);
+        if (intakes.Count == 0)
+        {
+            return [];
+        }
+
+        var serverIds = intakes.Where(i => i.SourceServerId != null).Select(i => i.SourceServerId!).ToList();
+        var serverNames = await db.Servers.AsNoTracking()
+            .Where(s => serverIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, cancellationToken);
+
+        var imports = new List<ContextImport>(intakes.Count);
+        foreach (var intake in intakes)
+        {
+            var sources = await db.IntakeSources.AsNoTracking()
+                .Where(s => s.IntakeId == intake.Id)
+                .OrderBy(s => s.Seq)
+                .Select(s => new { s.SourceRef, s.Title, s.Content, s.Status })
+                .ToListAsync(cancellationToken);
+            var open = await db.IntakeQuestions.AsNoTracking()
+                .CountAsync(q => q.IntakeId == intake.Id && q.Status == IntakeQuestionStatus.Open, cancellationToken);
+
+            imports.Add(new ContextImport(
+                intake.Id,
+                intake.Name,
+                intake.SourceServerId is { } id && serverNames.TryGetValue(id, out var name) ? name : null,
+                sources.Count(s => s.Status is IntakeSourceStatus.Extracted or IntakeSourceStatus.Proposed),
+                sources.Count(s => s.Status == IntakeSourceStatus.Proposed),
+                open,
+                sources.Take(ImportDocumentLimit)
+                    .Select(s => new ContextImportDocument(
+                        s.SourceRef, s.Title, SummaryOf(s.Content), s.Status.ToString().ToLowerInvariant()))
+                    .ToList()));
+        }
+
+        return imports;
+    }
+
+    /// <summary>
+    /// A document's one-line summary: its first blockquote line, which is
+    /// where the corpora this was built against keep it. Absent is empty,
+    /// not invented.
+    /// </summary>
+    public static string SummaryOf(string content)
+    {
+        foreach (var raw in content.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("> ", StringComparison.Ordinal))
+            {
+                var summary = line[2..].Trim();
+                return summary.Length <= 240 ? summary : summary[..239] + "…";
+            }
+        }
+        return "";
     }
 
     private async Task<string> StoreContextAsync(
@@ -375,12 +609,53 @@ public sealed class ConversationService(
                 ? d.Clone()
                 : null;
 
-            return new ArchitectResponse(reply.GetString()!, settled, diff);
+            var decisions = root.TryGetProperty("decisions", out var ds) && ds.ValueKind == JsonValueKind.Array
+                ? ParseDecisions(ds)
+                : [];
+
+            return new ArchitectResponse(reply.GetString()!, settled, diff, decisions);
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    private const int MaxDecisions = 3;
+
+    /// <summary>
+    /// The architect's decisions (docs/adr/0041), at most three, in the
+    /// shape intake questions use. One that breaks the contract is dropped
+    /// rather than retried: the reply is still worth having, and the person
+    /// can always answer in their own words.
+    /// </summary>
+    private static IReadOnlyList<DecisionPayload> ParseDecisions(JsonElement array)
+    {
+        var decisions = new List<DecisionPayload>();
+        foreach (var item in array.EnumerateArray())
+        {
+            if (decisions.Count == MaxDecisions)
+            {
+                break;
+            }
+            if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("options", out var optionsElement))
+            {
+                continue;
+            }
+
+            var title = item.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString()?.Trim() : null;
+            var options = IntakeService.ParseOptions(optionsElement, "/decisions", []);
+            if (string.IsNullOrEmpty(title) || options is null)
+            {
+                continue;
+            }
+
+            var why = item.TryGetProperty("why", out var w) && w.ValueKind == JsonValueKind.String ? w.GetString()?.Trim() : null;
+            decisions.Add(new DecisionPayload(
+                Ulid.NewUlid(), title, string.IsNullOrEmpty(why) ? null : why, options, AllowOther: true, AllowDefer: true));
+        }
+
+        return decisions;
     }
 
     private async Task<ProposalValidation> ValidateProposalAsync(

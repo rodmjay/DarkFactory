@@ -269,6 +269,7 @@ df.describe()                                   the factory answers its own hand
 df.projects.select(project_id)
 df.conversations.start(project_id, title?)
 df.conversations.turn(conversation_id, message)     → payloads[] per ADR-0021
+df.conversations.list(project_id) / get(conversation_id)   the thread as stored, with amendment state
 df.specs.query(project_id, q, layer?, kinds?, limit)
 df.specs.get(spec_id, revision?)
 df.specs.neighborhood(spec_id, depth)
@@ -282,6 +283,14 @@ df.work.create(project_id, amendment_ids[])          → run
 df.work.attach(run_id)                               stream; stub returns current event tail
 df.work.steer(run_id, message)                       stub records the event
 df.servers.register(url) / list / remove             register runs describe + conformance
+df.intake.start(project_id, name, sources[])         import an existing corpus (ADR-0037)
+df.intake.extract(source_id)                         draft + holes as questions; re-run to fill
+df.intake.status / questions / answer / defer
+df.intake.propose(source_id)                         → amendment; refused while holes are open
+df.intake.pull(project_id, server_id, area?)         import from a corpus server (ADR-0038)
+df.intake.drift(intake_id)                           what changed at the source since the pull
+df.servers.check(server_id)                          health check now; heals if it was down (ADR-0038)
+df.standards.ingest(server_id)                       copy a standards server into the index (ADR-0023); also automatic
 ```
 
 Resources: `factory://projects`, `factory://projects/{id}/specs`,

@@ -63,6 +63,11 @@ builder.Services.AddSingleton<IServerProbe>(sp =>
     new McpServerProbe(sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<FactoryDescribe>();
 
+// docs/adr/0038: every registered server is checked on a schedule, and one
+// that answers again after an outage is re-verified without anyone
+// re-registering it. ServerHealth:Enabled=false turns it off.
+builder.Services.AddHostedService<ServerHealthMonitor>();
+
 // docs/adr/0027: all inference goes through IModelGateway, and
 // ModelGatewayRegistration is the only place that decides which
 // implementation that is. Nothing above the interface — not the
