@@ -179,7 +179,7 @@ public sealed class IntakeQuestion
 public sealed record IntakeOption(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("label")] string Label,
-    [property: JsonPropertyName("consequence")] string? Consequence,
+    [property: JsonPropertyName("consequence"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Consequence,
     [property: JsonPropertyName("recommended")] bool Recommended);
 
 /// <summary>One document of a stored corpus artifact.</summary>

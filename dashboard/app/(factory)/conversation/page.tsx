@@ -25,6 +25,7 @@ import {
   AvatarFallback,
   Button,
   Card,
+  DecisionCard,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -110,7 +111,7 @@ export default function ConversationPage() {
             {turns.length === 0 && !thinking ? (
               <EmptyThread />
             ) : (
-              turns.map((turn) => <Turn key={turn.id} turn={turn} />)
+              turns.map((turn, index) => <Turn key={turn.id} turn={turn} latest={index === turns.length - 1} />)
             )}
             {thinking ? <Thinking /> : null}
             {error ? <TurnError message={error} onDismiss={dismissError} /> : null}
@@ -670,9 +671,9 @@ function TurnError({ message, onDismiss }: { message: string; onDismiss: () => v
   );
 }
 
-function Turn({ turn }: { turn: TurnRow }) {
+function Turn({ turn, latest }: { turn: TurnRow; latest: boolean }) {
   if (turn.author === "human") return <HumanTurn turn={turn} />;
-  return <AgentTurn turn={turn} />;
+  return <AgentTurn turn={turn} latest={latest} />;
 }
 
 function HumanTurn({ turn }: { turn: TurnRow }) {
@@ -695,7 +696,7 @@ function HumanTurn({ turn }: { turn: TurnRow }) {
   );
 }
 
-function AgentTurn({ turn }: { turn: TurnRow }) {
+function AgentTurn({ turn, latest }: { turn: TurnRow; latest: boolean }) {
   const isRun = turn.author === "run";
 
   return (
@@ -719,7 +720,7 @@ function AgentTurn({ turn }: { turn: TurnRow }) {
           )}
         </div>
 
-        <TurnPayloads payloads={turn.payloads} />
+        <TurnPayloads payloads={turn.payloads} latest={latest} />
 
         {turn.cost ? <CostStrip turn={turn} /> : null}
       </div>
@@ -734,15 +735,38 @@ function AgentTurn({ turn }: { turn: TurnRow }) {
  *
  * In the product the card's status is the amendment's, read back from the
  * factory after every decision. The prototype keeps its one local decision.
+ *
+ * A `decision` (ADR-0039) is answered by the next turn, so only the newest
+ * turn's cards take answers; earlier ones are drawn read-only.
  */
-function TurnPayloads({ payloads }: { payloads: Payload[] }) {
+function TurnPayloads({ payloads, latest }: { payloads: Payload[]; latest: boolean }) {
   const dispatch = useDispatch();
   const decision = useDecision();
   const prototype = usePrototype();
+  const { activeId, busy } = useConversation();
+
+  /** Answering a decision is the next turn, in words the architect can read back. */
+  const say = (message: string) =>
+    dispatch("df.conversations.turn", { conversation_id: activeId ?? "", message });
 
   return (
     <div className="flex flex-col gap-4">
       {payloads.map((payload, index) => {
+        if (payload.type === "decision" && latest && !prototype) {
+          return (
+            <DecisionCard
+              key={index}
+              decision={payload}
+              busy={busy}
+              onChoose={(id) => {
+                const chosen = payload.options.find((o) => o.id === id);
+                if (chosen) say(`${payload.title} — ${chosen.label}.${chosen.consequence ? ` ${chosen.consequence}` : ""}`);
+              }}
+              onOther={(text) => say(`${payload.title} — ${text}`)}
+              onDefer={(reason) => say(`${payload.title} — leave this open for now: ${reason}`)}
+            />
+          );
+        }
         if (payload.type !== "approval_card") {
           return <PayloadRenderer key={index} payloads={[payload]} />;
         }

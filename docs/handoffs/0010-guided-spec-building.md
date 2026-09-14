@@ -38,7 +38,7 @@
 
 ## What I did not do and why
 - **Not deployed.** The drones extraction is still running in the factory; a restart kills its call.
-- **The architect does not return `decision` payloads yet.** The guide covers intake; the chat is plan item 4.
+- ~~The architect does not return `decision` payloads yet.~~ Done after this report: template `architect/3` asks for at most three decisions and three sentences of prose; invalid decisions are dropped, not retried; the newest turn's cards answer by sending the next turn. Planted: no cap, not stored, no validation, prompt unchanged — each red.
 - Old `model_calls` rows keep their under-counted inputs and null cost; not backfilled.
 - The guide is not checked live: it needs the redeployed factory.
 - The showcase's toast section flakes on first run (reported by the UI agent); not fixed.

@@ -17,7 +17,7 @@ namespace DarkFactory.Data;
 public static class ArchitectPrompt
 {
     /// <summary>Bumped when the prompt changes, so docs/adr/0032 can attribute outcomes to a template.</summary>
-    public const string TemplateVersion = "architect/2";
+    public const string TemplateVersion = "architect/3";
 
     /// <summary>
     /// The built-in skill the architect runs with, until the skills tables
@@ -116,10 +116,25 @@ public static class ArchitectPrompt
         builder.AppendLine();
         builder.AppendLine("""
             {
-              "reply": "your message to the user, in markdown",
+              "reply": "at most three sentences, in markdown",
+              "decisions": [],
               "settled": false,
               "diff": null
             }
+            """);
+        builder.AppendLine();
+        builder.AppendLine("""
+            Rules for the reply and decisions (docs/adr/0039):
+            - Keep "reply" to three sentences or fewer. Say what you did or found; do not list
+              questions in it.
+            - Anything you need the user to decide goes in "decisions", at most three per turn,
+              most consequential first. Each is
+              { "title": "one question", "why": "one sentence on what it changes",
+                "options": [ { "label": "short, for a button", "consequence": "what choosing it
+                commits to or rules out", "recommended": true } ] }
+              with 2 to 4 options. Mark one recommended only when the specifications clearly
+              lean that way. The user can always answer in their own words or leave it open.
+            - When nothing needs deciding, "decisions" is [].
             """);
         builder.AppendLine();
         builder.AppendLine("Set \"settled\" to true and supply \"diff\" only when the conversation has reached a");
@@ -288,4 +303,4 @@ public static class ArchitectPrompt
 }
 
 /// <summary>The architect's response envelope, before any of it is trusted.</summary>
-public sealed record ArchitectResponse(string Reply, bool Settled, JsonElement? Diff);
+public sealed record ArchitectResponse(string Reply, bool Settled, JsonElement? Diff, IReadOnlyList<DecisionPayload>? Decisions = null);

@@ -5,6 +5,7 @@ Dispatches: df.conversations.create, df.conversations.send
 Renders:
   turn.payloads          → PayloadRenderer (markdown, dependency_graph, table, form, spec_diff, stage_timeline, code_diff)
   approval_card payload  → ApprovalCard (states: awaiting, approved, rejected; reject requires a reason)
+  decision payload       → DecisionCard on the newest turn (choose, own words, leave open → sends the next turn); read-only on earlier turns (ADR-0039)
   turn.cost              → Card cost strip (tokens this turn, delta vs last)
   retrieval              → context panel: LayerBadge, SpecId, server health chips, cost figures, skill revisions
   conversation list      → Input (search), buttons

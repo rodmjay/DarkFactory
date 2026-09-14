@@ -26,7 +26,21 @@ namespace DarkFactory.Data;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(MarkdownPayload), "markdown")]
 [JsonDerivedType(typeof(SpecDiffPayload), "spec_diff")]
+[JsonDerivedType(typeof(DecisionPayload), "decision")]
 public abstract record RenderPayload;
+
+/// <summary>
+/// Something the architect needs the person to decide, with the paths open
+/// (docs/adr/0039, contracts/schemas/decision.schema.json). Answering it is
+/// the next turn.
+/// </summary>
+public sealed record DecisionPayload(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("why"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Why,
+    [property: JsonPropertyName("options")] IReadOnlyList<IntakeOption> Options,
+    [property: JsonPropertyName("allow_other")] bool AllowOther,
+    [property: JsonPropertyName("allow_defer")] bool AllowDefer) : RenderPayload;
 
 public sealed record MarkdownPayload(
     [property: JsonPropertyName("text")] string Text) : RenderPayload;
@@ -332,6 +346,13 @@ public sealed class ConversationService(
             payloads.Add(new MarkdownPayload(ArchitectPrompt.CouldNotProposeMarkdown(validation.Result)));
         }
 
+        // What the architect needs decided goes after its prose, as cards
+        // the person answers by choosing (docs/adr/0039).
+        if (parsed?.Decisions is { Count: > 0 } asked)
+        {
+            payloads.AddRange(asked);
+        }
+
         var assistantTurn = new Turn
         {
             Id = Ulid.NewUlid(),
@@ -588,12 +609,53 @@ public sealed class ConversationService(
                 ? d.Clone()
                 : null;
 
-            return new ArchitectResponse(reply.GetString()!, settled, diff);
+            var decisions = root.TryGetProperty("decisions", out var ds) && ds.ValueKind == JsonValueKind.Array
+                ? ParseDecisions(ds)
+                : [];
+
+            return new ArchitectResponse(reply.GetString()!, settled, diff, decisions);
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    private const int MaxDecisions = 3;
+
+    /// <summary>
+    /// The architect's decisions (docs/adr/0039), at most three, in the
+    /// shape intake questions use. One that breaks the contract is dropped
+    /// rather than retried: the reply is still worth having, and the person
+    /// can always answer in their own words.
+    /// </summary>
+    private static IReadOnlyList<DecisionPayload> ParseDecisions(JsonElement array)
+    {
+        var decisions = new List<DecisionPayload>();
+        foreach (var item in array.EnumerateArray())
+        {
+            if (decisions.Count == MaxDecisions)
+            {
+                break;
+            }
+            if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("options", out var optionsElement))
+            {
+                continue;
+            }
+
+            var title = item.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString()?.Trim() : null;
+            var options = IntakeService.ParseOptions(optionsElement, "/decisions", []);
+            if (string.IsNullOrEmpty(title) || options is null)
+            {
+                continue;
+            }
+
+            var why = item.TryGetProperty("why", out var w) && w.ValueKind == JsonValueKind.String ? w.GetString()?.Trim() : null;
+            decisions.Add(new DecisionPayload(
+                Ulid.NewUlid(), title, string.IsNullOrEmpty(why) ? null : why, options, AllowOther: true, AllowDefer: true));
+        }
+
+        return decisions;
     }
 
     private async Task<ProposalValidation> ValidateProposalAsync(
