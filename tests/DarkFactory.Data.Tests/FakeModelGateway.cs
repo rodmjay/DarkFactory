@@ -47,13 +47,13 @@ internal sealed class FakeModelGateway : IModelGateway
     }
 
     /// <summary>For the fact-row tests, where the usage breakdown is the thing under test.</summary>
-    public FakeModelGateway RespondsWithUsage(string text, ModelUsage usage)
+    public FakeModelGateway RespondsWithUsage(string text, ModelUsage usage, string modelFamily = "fake-model")
     {
         _responses.Enqueue(request => new ModelCompletion(text, usage, request.Deployment)
         {
             LatencyMs = 12,
             Provider = "fake",
-            ModelFamily = "fake-model",
+            ModelFamily = modelFamily,
         });
         return this;
     }
