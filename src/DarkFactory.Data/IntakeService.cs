@@ -30,6 +30,8 @@ public sealed record IntakeOverview(Intake Intake, IReadOnlyList<IntakeSourceOve
 
 public sealed record IntakeQuestionWithSource(IntakeQuestion Question, string SourceRef);
 
+public sealed record IntakeListing(Intake Intake, int Documents, int Extracted, int Proposed, int OpenQuestions);
+
 /// <summary>A hole as the model reported it, after validation.</summary>
 public sealed record IntakeHole(string? Id, string Kind, string Question, string? Quote, IReadOnlyList<int> Affects);
 
@@ -482,6 +484,32 @@ public sealed class IntakeService(
             Count(s.Id, IntakeQuestionStatus.Answered),
             Count(s.Id, IntakeQuestionStatus.Deferred),
             Count(s.Id, IntakeQuestionStatus.Resolved))).ToList());
+    }
+
+    /// <summary>A project's imports, oldest first, with how far along each is.</summary>
+    public async Task<IReadOnlyList<IntakeListing>> ListAsync(string projectId, CancellationToken cancellationToken = default)
+    {
+        var intakes = await db.Intakes.AsNoTracking()
+            .Where(i => i.ProjectId == projectId)
+            .OrderBy(i => i.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var ids = intakes.Select(i => i.Id).ToList();
+
+        var sources = await db.IntakeSources.AsNoTracking()
+            .Where(s => ids.Contains(s.IntakeId))
+            .Select(s => new { s.IntakeId, s.Status })
+            .ToListAsync(cancellationToken);
+        var open = await db.IntakeQuestions.AsNoTracking()
+            .Where(q => ids.Contains(q.IntakeId) && q.Status == IntakeQuestionStatus.Open)
+            .Select(q => q.IntakeId)
+            .ToListAsync(cancellationToken);
+
+        return intakes.Select(i => new IntakeListing(
+            i,
+            sources.Count(s => s.IntakeId == i.Id),
+            sources.Count(s => s.IntakeId == i.Id && s.Status is IntakeSourceStatus.Extracted or IntakeSourceStatus.Proposed),
+            sources.Count(s => s.IntakeId == i.Id && s.Status == IntakeSourceStatus.Proposed),
+            open.Count(id => id == i.Id))).ToList();
     }
 
     public async Task<IReadOnlyList<IntakeQuestionWithSource>> QuestionsAsync(

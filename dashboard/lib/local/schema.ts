@@ -97,6 +97,31 @@ export interface TurnRow {
   cost_series?: number[];
 }
 
+/** `servers` for the current project, as the health monitor last saw them (ADR-0038). */
+export interface ConnectionRow {
+  id: string;
+  name: string;
+  domain: string;
+  url: string;
+  /** Registered | Conformant | Degraded | Failed | Unreachable. */
+  status: string;
+  last_seen_at?: string | null;
+  unreachable_since?: string | null;
+  last_error?: string | null;
+}
+
+/** `intakes` — imports of existing specifications (ADR-0037). */
+export interface IntakeRow {
+  id: string;
+  name: string;
+  source_server_id?: string | null;
+  conversation_id: string;
+  documents: number;
+  extracted: number;
+  proposed: number;
+  open_questions: number;
+}
+
 /** What the architect retrieved for a turn — the "Looking at" panel. */
 export interface RetrievalRow {
   turn_id: string;
@@ -332,6 +357,10 @@ export interface LocalDb {
   usage: UsageRow;
   /** Built-in connectors offered before anything is authorized (ADR-0019). */
   connectors: { id: string; name: string; domain: string; note: string }[];
+  /** The current project's servers and their health. */
+  connections: ConnectionRow[];
+  /** The current project's imports. */
+  intakes: IntakeRow[];
   /**
    * The approval decision on the amendment currently in view.
    *

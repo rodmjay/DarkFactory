@@ -22,6 +22,13 @@ import * as React from "react";
 import { format, type Payload } from "@dark-factory/ui";
 
 import {
+  checkServerAction,
+  connectServerAction,
+  driftAction,
+  ingestSpecsAction,
+  loadSources,
+  previewCorpusAction,
+  type Result,
   approveAction,
   loadConversation,
   loadConversations,
@@ -32,13 +39,19 @@ import {
   startConversationAction,
 } from "../factory/actions";
 import type {
+  CorpusArea,
+  CorpusDrift,
   FactoryConversation,
   FactoryConversationDetail,
+  FactoryIntake,
   FactoryProject,
+  FactoryServer,
 } from "../factory/mcp";
 import type {
+  ConnectionRow,
   ConversationRow,
   DecisionRow,
+  IntakeRow,
   LocalDb,
   ProjectRow,
   ScreenName,
@@ -133,6 +146,20 @@ export interface ConversationControls {
   busy: boolean;
 }
 
+/**
+ * Wiring the project to its servers, and pulling specifications in — the
+ * left panel's buttons (ADR-0038). Each is a factory call whose result the
+ * panel shows; the connections and imports it changes are re-read after.
+ */
+export interface SourcesControls {
+  hydrated: boolean;
+  connect: (url: string) => Promise<Result<FactoryServer>>;
+  check: (serverId: string) => Promise<Result<{ outcome: string; server: FactoryServer }>>;
+  preview: (serverId: string) => Promise<Result<CorpusArea[]>>;
+  ingest: (serverId: string, area: string) => Promise<Result<{ intake_id: string; name: string; documents: number }>>;
+  drift: (intakeId: string) => Promise<Result<CorpusDrift>>;
+}
+
 interface LocalDbContextValue {
   db: LocalDb;
   screen: ScreenName;
@@ -150,6 +177,7 @@ interface LocalDbContextValue {
   refresh: () => void;
   register: (url: string, name?: string) => Promise<{ ok: boolean; error?: string }>;
   conversation: ConversationControls;
+  sources: SourcesControls;
 }
 
 const LocalDbContext = React.createContext<LocalDbContextValue | null>(null);
@@ -285,6 +313,36 @@ export function LocalDbProvider({
     };
   }, [activeId]);
 
+  // ------------------------------------------------------------- sources
+
+  const workspaceUrl = factoryProjects?.[0]?.workspace_mcp_url ?? null;
+  const [factorySources, setFactorySources] = React.useState<{
+    connections: ConnectionRow[];
+    intakes: IntakeRow[];
+  } | null>(null);
+
+  const reloadSources = React.useCallback(async (id: string, url: string | null) => {
+    const result = await loadSources(id, url);
+    if (result.ok) setFactorySources(toSources(result.data));
+  }, []);
+
+  React.useEffect(() => {
+    if (projectId === null) return;
+    let cancelled = false;
+    const load = () =>
+      loadSources(projectId, workspaceUrl).then((result) => {
+        if (!cancelled && result.ok) setFactorySources(toSources(result.data));
+      });
+    load();
+    // The monitor re-checks every server every thirty seconds (ADR-0038);
+    // reading at the same cadence keeps "connected" meaning connected now.
+    const timer = window.setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [projectId, workspaceUrl]);
+
   const reloadConversations = React.useCallback(async (id: string) => {
     const result = await loadConversations(id);
     if (result.ok) setFactoryConversations(result.data.map(toConversationRow));
@@ -401,6 +459,8 @@ export function LocalDbProvider({
         conversations: factoryConversations ?? [],
         turns: [...turns, ...pending],
         retrieval: [],
+        connections: factorySources?.connections ?? [],
+        intakes: factorySources?.intakes ?? [],
         thinking: thinkingIn !== null && thinkingIn === activeId,
         decision: { state: "undecided" },
       } as LocalDb;
@@ -419,7 +479,7 @@ export function LocalDbProvider({
     // are showing their prototypes, and putting a real project's name above
     // fixture counts would be the one thing this seam exists to prevent.
     return { ...base, projects, ...overlay } as LocalDb;
-  }, [scenario, overlay, factoryProjects, factoryConversations, thread, activeId, pendingTurn, thinkingIn]);
+  }, [scenario, overlay, factoryProjects, factoryConversations, thread, activeId, pendingTurn, thinkingIn, factorySources]);
 
   const dispatch = React.useCallback(
     (command: Command, args: Record<string, unknown> = {}) => {
@@ -475,9 +535,32 @@ export function LocalDbProvider({
     [scenario, activeId, conversationError, factoryConversations, thinkingIn, prototypeConversationId],
   );
 
+  const sources = React.useMemo<SourcesControls>(() => {
+    const noProject = { ok: false as const, error: "There is no project to connect to yet." };
+    const refreshAfter = async <T,>(result: Result<T>): Promise<Result<T>> => {
+      if (projectId !== null) await reloadSources(projectId, workspaceUrl);
+      return result;
+    };
+
+    return {
+      hydrated: factorySources !== null,
+      connect: async (url) => (projectId === null ? noProject : refreshAfter(await connectServerAction(url, projectId))),
+      check: async (serverId) => refreshAfter(await checkServerAction(serverId)),
+      preview: (serverId) => previewCorpusAction(serverId),
+      ingest: async (serverId, area) => {
+        if (projectId === null) return noProject;
+        const result = await refreshAfter(await ingestSpecsAction(projectId, serverId, area));
+        // The import's conversation is new; the list should show it.
+        if (result.ok) await reloadConversations(projectId);
+        return result;
+      },
+      drift: (intakeId) => driftAction(intakeId),
+    };
+  }, [projectId, workspaceUrl, factorySources, reloadSources, reloadConversations]);
+
   const value = React.useMemo(
-    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation }),
-    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation],
+    () => ({ db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources }),
+    [db, screen, dispatch, scenario, setScenario, live, isLive, refresh, register, conversation, sources],
   );
 
   return <LocalDbContext.Provider value={value}>{children}</LocalDbContext.Provider>;
@@ -529,6 +612,39 @@ export function usePrototype(): boolean {
 /** Which conversation is on screen, and how to move between them. */
 export function useConversation(): ConversationControls {
   return useLocalDb().conversation;
+}
+
+/** Connecting servers and ingesting specifications (the left panel). */
+export function useSources(): SourcesControls {
+  return useLocalDb().sources;
+}
+
+function toSources(data: { servers: FactoryServer[]; intakes: FactoryIntake[] }): {
+  connections: ConnectionRow[];
+  intakes: IntakeRow[];
+} {
+  return {
+    connections: data.servers.map((s) => ({
+      id: s.id,
+      name: s.name,
+      domain: s.domain,
+      url: s.url,
+      status: s.status,
+      last_seen_at: s.last_seen_at,
+      unreachable_since: s.unreachable_since,
+      last_error: s.last_error,
+    })),
+    intakes: data.intakes.map((i) => ({
+      id: i.intake_id,
+      name: i.name,
+      source_server_id: i.source_server_id,
+      conversation_id: i.conversation_id,
+      documents: i.documents,
+      extracted: i.extracted,
+      proposed: i.proposed,
+      open_questions: i.open_questions,
+    })),
+  };
 }
 
 /**

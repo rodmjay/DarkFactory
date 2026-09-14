@@ -17,6 +17,17 @@
 
 import {
   FactoryError,
+  checkServer,
+  intakeDrift,
+  listIntakes,
+  listServers,
+  previewCorpus,
+  pullIntake,
+  registerServer,
+  type CorpusArea,
+  type CorpusDrift,
+  type FactoryIntake,
+  type FactoryServer,
   approveAmendment,
   getConversation,
   listConversations,
@@ -101,6 +112,64 @@ export async function sendTurnAction(conversationId: string, message: string): P
 
 export async function approveAction(amendmentId: string): Promise<Result<void>> {
   return attempt(() => approveAmendment(amendmentId));
+}
+
+// ------------------------------------------------------- servers and imports
+
+/**
+ * The project's servers and imports, in one read. A server belongs to the
+ * project when it was registered for it, or when it is the workspace the
+ * project is bound to by URL.
+ */
+export async function loadSources(
+  projectId: string,
+  workspaceUrl: string | null,
+): Promise<Result<{ servers: FactoryServer[]; intakes: FactoryIntake[] }>> {
+  return attempt(async () => {
+    const [servers, intakes] = await Promise.all([listServers(), listIntakes(projectId)]);
+    return {
+      servers: servers.filter((s) => s.project_id === projectId || (workspaceUrl !== null && s.url === workspaceUrl)),
+      intakes,
+    };
+  });
+}
+
+/** Same shape check as registering a project: an obvious typo is answered now, not after a handshake times out. */
+export async function connectServerAction(url: string, projectId: string): Promise<Result<FactoryServer>> {
+  const trimmed = url.trim();
+  if (trimmed === "") return { ok: false, error: "The server's MCP URL is required." };
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { ok: false, error: "An MCP server URL must be http or https." };
+    }
+  } catch {
+    return { ok: false, error: `“${trimmed}” is not a URL.` };
+  }
+  return attempt(async () => (await registerServer(trimmed, projectId)).server);
+}
+
+export async function checkServerAction(serverId: string): Promise<Result<{ outcome: string; server: FactoryServer }>> {
+  return attempt(() => checkServer(serverId));
+}
+
+export async function previewCorpusAction(serverId: string): Promise<Result<CorpusArea[]>> {
+  return attempt(() => previewCorpus(serverId));
+}
+
+export async function ingestSpecsAction(
+  projectId: string,
+  serverId: string,
+  area: string,
+): Promise<Result<{ intake_id: string; name: string; documents: number }>> {
+  return attempt(async () => {
+    const pulled = await pullIntake(projectId, serverId, area);
+    return { intake_id: pulled.intake_id, name: pulled.name, documents: pulled.sources.length };
+  });
+}
+
+export async function driftAction(intakeId: string): Promise<Result<CorpusDrift>> {
+  return attempt(() => intakeDrift(intakeId));
 }
 
 /** The factory records the reason with the rejection, so an empty one is refused here first. */

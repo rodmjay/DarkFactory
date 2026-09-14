@@ -8,6 +8,9 @@ namespace DarkFactory.Data;
 public sealed record CorpusDocument(
     string Id, string Title, string? Area, string? Status, string? Updated, string Sha256, string? SupersededBy);
 
+/// <summary>One area of a corpus: how many documents a pull would import, and how many it would leave out as retired.</summary>
+public sealed record CorpusArea(string Area, int Documents, int Retired);
+
 public sealed record CorpusDriftEntry(string OriginId, string SourceId, string ImportedSha256, string CurrentSha256);
 
 /// <summary>What changed at the source since an intake was pulled from it.</summary>
@@ -41,6 +44,22 @@ public sealed class CorpusImporter(DarkFactoryDbContext db, IServerProbe probe, 
     public static IReadOnlySet<string> RetiredStatuses { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "superseded", "rejected" };
 
+    /// <summary>What a pull would bring in, area by area — so choosing what to import is a look, not a guess.</summary>
+    public async Task<IReadOnlyList<CorpusArea>> PreviewAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        var server = await CorpusServerAsync(serverId, cancellationToken);
+        var documents = await ListAsync(server, area: null, cancellationToken);
+
+        return documents
+            .GroupBy(d => d.Area ?? "(none)", StringComparer.Ordinal)
+            .Select(g => new CorpusArea(g.Key, g.Count(d => !IsRetired(d)), g.Count(IsRetired)))
+            .OrderBy(a => a.Area, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static bool IsRetired(CorpusDocument document) =>
+        document.Status is not null && RetiredStatuses.Contains(document.Status);
+
     public async Task<IntakeStarted> PullAsync(
         string projectId,
         string serverId,
@@ -51,6 +70,21 @@ public sealed class CorpusImporter(DarkFactoryDbContext db, IServerProbe probe, 
         CancellationToken cancellationToken = default)
     {
         var server = await CorpusServerAsync(serverId, cancellationToken);
+
+        // One import per area per server. Pulling again would make a second
+        // copy of every document, each extracted and proposed separately —
+        // duplicates in the graph by construction. What changed since is
+        // drift's question, not a second pull's.
+        var intakeName = name ?? area ?? server.Name;
+        var existing = await db.Intakes.AsNoTracking().FirstOrDefaultAsync(
+            i => i.ProjectId == projectId && i.SourceServerId == server.Id && i.Name == intakeName, cancellationToken);
+        if (existing is not null)
+        {
+            throw new InvalidOperationException(
+                $"'{intakeName}' has already been imported from '{server.Name}' (intake {existing.Id}). " +
+                "Check it for changes instead of pulling it again.");
+        }
+
         var documents = await ListAsync(server, area, cancellationToken);
 
         var wanted = documents
@@ -75,7 +109,7 @@ public sealed class CorpusImporter(DarkFactoryDbContext db, IServerProbe probe, 
         }
 
         return await intake.StartAsync(
-            projectId, name ?? server.Name, sources, createdBy, cancellationToken, sourceServerId: server.Id);
+            projectId, intakeName, sources, createdBy, cancellationToken, sourceServerId: server.Id);
     }
 
     /// <summary>

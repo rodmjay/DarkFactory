@@ -37,6 +37,27 @@ public static class IntakeTools
         return await Summarize(intake, started.Intake.Id, cancellationToken);
     }
 
+    [McpServerTool(Name = "df.intake.list"),
+     Description("A project's imports: where each came from, how many documents, and how far along extraction and proposal are.")]
+    public static async Task<IReadOnlyList<IntakeListItem>> List(
+        IntakeService intake,
+        [Description("The project.")] string project_id,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await Errors.Surfacing(() => intake.ListAsync(project_id, cancellationToken));
+        return rows.Select(r => new IntakeListItem(
+            r.Intake.Id, r.Intake.Name, r.Intake.SourceServerId, r.Intake.ConversationId,
+            r.Documents, r.Extracted, r.Proposed, r.OpenQuestions, r.Intake.CreatedAt)).ToList();
+    }
+
+    [McpServerTool(Name = "df.intake.preview"),
+     Description("What a corpus server would bring in, area by area, before anything is pulled.")]
+    public static async Task<IReadOnlyList<CorpusArea>> Preview(
+        CorpusImporter importer,
+        [Description("The corpus server's id, from df.servers.list.")] string server_id,
+        CancellationToken cancellationToken = default) =>
+        await Errors.Surfacing(() => importer.PreviewAsync(server_id, cancellationToken));
+
     [McpServerTool(Name = "df.intake.pull"),
      Description("Start an import by pulling every document from a registered corpus server (docs/conventions/corpus.md). Superseded and rejected documents are left out unless asked for. Each document's text is checked against the hash the server listed.")]
     public static async Task<IntakeSummary> Pull(
@@ -262,6 +283,17 @@ public sealed record IntakeExtractResult(
     int TokensUsed);
 
 public sealed record IntakeProposed(string SourceId, string AmendmentId, string Status);
+
+public sealed record IntakeListItem(
+    string IntakeId,
+    string Name,
+    string? SourceServerId,
+    string ConversationId,
+    int Documents,
+    int Extracted,
+    int Proposed,
+    int OpenQuestions,
+    DateTimeOffset CreatedAt);
 
 public sealed record CorpusDriftChange(string OriginId, string SourceId, string ImportedSha256, string CurrentSha256);
 

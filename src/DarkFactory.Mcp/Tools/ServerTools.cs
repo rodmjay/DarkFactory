@@ -121,13 +121,16 @@ public sealed record ServerSummary(
     string? LastError,
     DateTimeOffset? NextCheckAt,
     DateTimeOffset? HealedAt,
-    int HealCount)
+    int HealCount,
+    // The project a server was registered for; null for org-wide servers and
+    // for a workspace, which a project is bound to by URL instead.
+    string? ProjectId)
 {
     public static ServerSummary From(Server s) => new(
         s.Id, s.Url, s.Name, s.Domain, s.Tier.ToString(), s.ConventionVersion,
         s.Status.ToString(), s.ManifestDiffJson, s.RegisteredAt, s.LastConformanceAt,
         s.LastCheckedAt, s.LastSeenAt, s.UnreachableSince, s.ConsecutiveFailures, s.LastError,
-        s.NextCheckAt, s.HealedAt, s.HealCount);
+        s.NextCheckAt, s.HealedAt, s.HealCount, s.ProjectId);
 }
 
 public sealed record ServerCheckResult(string Outcome, ServerSummary Server);

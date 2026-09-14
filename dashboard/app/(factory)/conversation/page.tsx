@@ -25,7 +25,14 @@ import {
   AvatarFallback,
   Button,
   Card,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
+  Label,
   LayerBadge,
   PayloadRenderer,
   SpecId,
@@ -35,8 +42,16 @@ import {
 } from "@dark-factory/ui";
 import type { Payload } from "@dark-factory/ui";
 
-import { useConversation, useDecision, useDispatch, usePrototype, useQuery } from "@/lib/local/store";
-import type { TurnRow } from "@/lib/local/schema";
+import {
+  useConversation,
+  useDecision,
+  useDispatch,
+  usePrototype,
+  useQuery,
+  useSources,
+} from "@/lib/local/store";
+import type { ConnectionRow, TurnRow } from "@/lib/local/schema";
+import type { CorpusArea } from "@/lib/factory/mcp";
 
 export default function ConversationPage() {
   const conversations = useQuery((db) => db.conversations);
@@ -170,7 +185,329 @@ function ConversationList() {
           </button>
         ))}
       </div>
+
+      {prototype ? null : <SourcesPanel />}
     </aside>
+  );
+}
+
+// ---------------------------------------------------------------- sources
+
+/**
+ * Where this project's specifications come from, and the one button that
+ * moves them along (ADR-0038). Which button depends on the state: nothing
+ * connected → Connect MCP; connected but down → Reconnect; connected and
+ * not yet ingested → Ingest specs; ingested → Check for changes. Every
+ * server the project uses is listed with the health monitor's word on it,
+ * so "is it wired up" is answered by looking.
+ */
+function SourcesPanel() {
+  const connections = useQuery((db) => db.connections);
+  const intakes = useQuery((db) => db.intakes);
+  const projectName = useQuery((db) => db.project?.name ?? "");
+  const sources = useSources();
+  const [dialog, setDialog] = React.useState<"connect" | "ingest" | null>(null);
+  const [note, setNote] = React.useState<{ text: string; failed?: boolean } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const corpus = connections.find((c) => c.domain === "corpus");
+  const imported = corpus ? intakes.find((i) => i.source_server_id === corpus.id) : undefined;
+
+  async function reconnect(serverId: string) {
+    setBusy(true);
+    const result = await sources.check(serverId);
+    setBusy(false);
+    setNote(
+      result.ok
+        ? { text: `${result.data.server.name}: ${result.data.server.status.toLowerCase()}`, failed: result.data.server.status === "Unreachable" }
+        : { text: result.error, failed: true },
+    );
+  }
+
+  async function checkForChanges(intakeId: string) {
+    setBusy(true);
+    const result = await sources.drift(intakeId);
+    setBusy(false);
+    if (!result.ok) return setNote({ text: result.error, failed: true });
+    const { changed, added, removed } = result.data;
+    setNote({
+      text:
+        changed.length + added.length + removed.length === 0
+          ? "No changes at the source since the import."
+          : `Since the import: ${changed.length} edited, ${added.length} new, ${removed.length} removed at the source.`,
+    });
+  }
+
+  let action: React.ReactNode;
+  if (!sources.hydrated) {
+    action = <p className="text-2xs text-muted">Reading connections…</p>;
+  } else if (!corpus) {
+    action = (
+      <Button size="sm" variant="needs-you" className="w-full" onClick={() => setDialog("connect")}>
+        Connect MCP
+      </Button>
+    );
+  } else if (corpus.status === "Unreachable") {
+    action = (
+      <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => reconnect(corpus.id)}>
+        {busy ? "Reconnecting…" : "Reconnect"}
+      </Button>
+    );
+  } else if (imported) {
+    action = (
+      <div className="flex flex-col gap-1.5">
+        <p className="text-2xs text-secondary">
+          {imported.documents} specs ingested from {corpus.name} · {imported.extracted} extracted
+        </p>
+        <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => checkForChanges(imported.id)}>
+          {busy ? "Checking…" : "Check for changes"}
+        </Button>
+      </div>
+    );
+  } else {
+    action = (
+      <Button size="sm" variant="needs-you" className="w-full" onClick={() => setDialog("ingest")}>
+        Ingest specs
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-none flex-col gap-2.5 border-t border-border px-3 py-3">
+      <span className="text-xs font-medium text-secondary">Sources</span>
+
+      {connections.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {connections.map((connection) => (
+            <ConnectionItem key={connection.id} connection={connection} />
+          ))}
+        </ul>
+      ) : null}
+
+      {action}
+
+      {note ? (
+        <p className={cn("text-2xs", note.failed ? "text-status-failed-text" : "text-secondary")}>{note.text}</p>
+      ) : null}
+
+      <Dialog open={dialog === "connect"} onOpenChange={(open) => setDialog(open ? "connect" : null)}>
+        <DialogContent className="max-w-lg">
+          {dialog === "connect" ? (
+            <ConnectForm
+              onDone={(text) => {
+                setDialog(null);
+                if (text) setNote({ text });
+              }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialog === "ingest"} onOpenChange={(open) => setDialog(open ? "ingest" : null)}>
+        <DialogContent className="max-w-lg">
+          {dialog === "ingest" && corpus ? (
+            <IngestForm
+              serverId={corpus.id}
+              serverName={corpus.name}
+              suggestedArea={projectName}
+              onDone={(text) => {
+                setDialog(null);
+                if (text) setNote({ text });
+              }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ConnectionItem({ connection }: { connection: ConnectionRow }) {
+  const tone =
+    connection.status === "Conformant"
+      ? "border-server-conformant-border bg-server-conformant-fill text-server-conformant-text"
+      : connection.status === "Unreachable" || connection.status === "Failed"
+        ? "border-server-unreachable-border bg-server-unreachable-fill text-server-unreachable-text"
+        : "border-server-degraded-border bg-server-degraded-fill text-server-degraded-text";
+
+  const title =
+    connection.status === "Unreachable"
+      ? `Not answering since ${connection.unreachable_since ? format.at(connection.unreachable_since) : "recently"}${connection.last_error ? ` — ${connection.last_error}` : ""}. The factory keeps retrying.`
+      : connection.last_seen_at
+        ? `Last answered ${format.at(connection.last_seen_at)} · ${connection.url}`
+        : connection.url;
+
+  return (
+    <li className="flex items-center gap-1.5 text-2xs" title={title}>
+      <span className={cn("shrink-0 rounded-pill border px-1.5 text-[10px]", tone)}>
+        {connection.status === "Conformant" ? "connected" : connection.status.toLowerCase()}
+      </span>
+      <span className="truncate text-primary">{connection.name}</span>
+      <span className="ml-auto shrink-0 text-muted">{connection.domain}</span>
+    </li>
+  );
+}
+
+/** Wire up an MCP server: one URL, and the factory does the handshake and every check. */
+function ConnectForm({ onDone }: { onDone: (note?: string) => void }) {
+  const sources = useSources();
+  const [url, setUrl] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    const result = await sources.connect(url);
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    const server = result.data;
+    onDone(
+      server.domain === "corpus"
+        ? `Connected ${server.name}: ${server.status.toLowerCase()}. Its specs can be ingested now.`
+        : `Connected ${server.name} — a ${server.domain} server, not a specs source.`,
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <DialogHeader>
+        <DialogTitle>Connect an MCP server</DialogTitle>
+        <DialogDescription>
+          The factory runs the handshake, checks every capability the server declares, and keeps
+          checking it every thirty seconds from then on. A specs server is what Ingest specs reads.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="mcp-url">Server URL</Label>
+        <Input
+          id="mcp-url"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+          placeholder="http://mb-specs:8941/mcp"
+          autoFocus
+          disabled={busy}
+        />
+        <p className="text-2xs text-muted">
+          The MCP endpoint as the factory reaches it — in this stack, by container name.
+        </p>
+      </div>
+
+      {error ? <p className="text-2xs text-status-failed-text">{error}</p> : null}
+
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={() => onDone()} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="needs-you" disabled={busy || url.trim() === ""}>
+          {busy ? "Running the handshake…" : "Connect"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+/** Pick what to bring in, then pull it: every document fetched and checked against its hash. */
+function IngestForm({
+  serverId,
+  serverName,
+  suggestedArea,
+  onDone,
+}: {
+  serverId: string;
+  serverName: string;
+  suggestedArea: string;
+  onDone: (note?: string) => void;
+}) {
+  const sources = useSources();
+  const [areas, setAreas] = React.useState<CorpusArea[] | null>(null);
+  const [chosen, setChosen] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    sources.preview(serverId).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) return setError(result.error);
+      setAreas(result.data);
+      // The project's own area, when the server has one by that name.
+      setChosen(result.data.find((a) => a.area === suggestedArea)?.area ?? result.data[0]?.area ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Read once per opening; `sources` changes identity on every refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverId, suggestedArea]);
+
+  const selected = areas?.find((a) => a.area === chosen);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!chosen) return;
+    setBusy(true);
+    setError(null);
+    const result = await sources.ingest(serverId, chosen);
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    onDone(`Ingested ${result.data.documents} specs from ${serverName} into “Intake: ${result.data.name}”.`);
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <DialogHeader>
+        <DialogTitle>Ingest specs from {serverName}</DialogTitle>
+        <DialogDescription>
+          Every document in the area is read from the server and checked against the hash it listed.
+          Nothing enters the spec graph yet: each one is extracted, its questions answered, then proposed.
+        </DialogDescription>
+      </DialogHeader>
+
+      {areas === null && !error ? <p className="text-2xs text-muted">Reading what {serverName} has…</p> : null}
+
+      {areas ? (
+        <ul className="flex max-h-64 flex-col gap-1 overflow-auto">
+          {areas.map((area) => (
+            <li key={area.area}>
+              <button
+                type="button"
+                onClick={() => setChosen(area.area)}
+                disabled={busy}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-control border px-3 py-2 text-left text-xs",
+                  area.area === chosen
+                    ? "border-accent-border bg-accent-fill text-accent-text"
+                    : "border-border text-secondary hover:bg-sunken hover:text-primary",
+                )}
+              >
+                <span className="font-medium">{area.area}</span>
+                <span className="text-2xs">
+                  {area.documents} specs{area.retired > 0 ? ` · ${area.retired} superseded, left out` : ""}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {error ? <p className="text-2xs text-status-failed-text">{error}</p> : null}
+
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={() => onDone()} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="needs-you" disabled={busy || !selected}>
+          {busy
+            ? `Reading ${selected?.documents ?? ""} specs…`
+            : selected
+              ? `Ingest ${selected.documents} specs`
+              : "Ingest"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }
 

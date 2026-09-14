@@ -356,3 +356,81 @@ export async function approveAmendment(amendmentId: string): Promise<void> {
 export async function rejectAmendment(amendmentId: string, reason: string): Promise<void> {
   await callTool("df.specs.reject", { amendment_id: amendmentId, reason });
 }
+
+// ------------------------------------------------------- servers and imports
+
+/** `ServerSummary` from `df.servers.*`, with the health monitor's fields (ADR-0038). */
+export interface FactoryServer {
+  id: string;
+  url: string;
+  name: string;
+  domain: string;
+  status: string;
+  project_id?: string | null;
+  last_seen_at?: string | null;
+  unreachable_since?: string | null;
+  last_error?: string | null;
+}
+
+export async function listServers(): Promise<FactoryServer[]> {
+  return (await callTool<FactoryServer[]>("df.servers.list")) ?? [];
+}
+
+/** Runs the handshake and every conformance probe, so it is given a minute. */
+export function registerServer(
+  url: string,
+  projectId: string,
+): Promise<{ server: FactoryServer; conformance: { capability: string; status: string; detail?: string | null }[] }> {
+  return callTool("df.servers.register", { url, project_id: projectId }, { timeoutMs: 60_000 });
+}
+
+export function checkServer(serverId: string): Promise<{ outcome: string; server: FactoryServer }> {
+  return callTool("df.servers.check", { server_id: serverId }, { timeoutMs: 60_000 });
+}
+
+/** `IntakeListItem` from `df.intake.list`. */
+export interface FactoryIntake {
+  intake_id: string;
+  name: string;
+  source_server_id?: string | null;
+  conversation_id: string;
+  documents: number;
+  extracted: number;
+  proposed: number;
+  open_questions: number;
+}
+
+export async function listIntakes(projectId: string): Promise<FactoryIntake[]> {
+  return (await callTool<FactoryIntake[]>("df.intake.list", { project_id: projectId })) ?? [];
+}
+
+export interface CorpusArea {
+  area: string;
+  documents: number;
+  retired: number;
+}
+
+export async function previewCorpus(serverId: string): Promise<CorpusArea[]> {
+  return (await callTool<CorpusArea[]>("df.intake.preview", { server_id: serverId }, { timeoutMs: 60_000 })) ?? [];
+}
+
+/** Fetches and hash-checks every document in the area: one call per document, so minutes, not seconds. */
+export function pullIntake(
+  projectId: string,
+  serverId: string,
+  area: string,
+): Promise<{ intake_id: string; name: string; sources: unknown[] }> {
+  return callTool("df.intake.pull", { project_id: projectId, server_id: serverId, area }, { timeoutMs: 5 * 60_000 });
+}
+
+export interface CorpusDrift {
+  intake_id: string;
+  server_name: string;
+  changed: { origin_id: string }[];
+  added: string[];
+  removed: string[];
+}
+
+export function intakeDrift(intakeId: string): Promise<CorpusDrift> {
+  return callTool("df.intake.drift", { intake_id: intakeId }, { timeoutMs: 60_000 });
+}

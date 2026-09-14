@@ -39,7 +39,7 @@ public sealed class CorpusImporterTests(SpecGraphTestFixture fixture)
             {
                 id = d.Id,
                 title = d.Id,
-                area = "drones",
+                area = d.Id.Split('/')[0],
                 status = d.Status,
                 updated = "2026-09-07",
                 sha256 = SpecGraphService.ComputeHash(d.Text),
@@ -56,7 +56,7 @@ public sealed class CorpusImporterTests(SpecGraphTestFixture fixture)
             {
                 id,
                 title = id,
-                area = "drones",
+                area = doc.Id.Split('/')[0],
                 status = doc.Status,
                 updated = "2026-09-07",
                 sha256 = SpecGraphService.ComputeHash(text),
@@ -120,7 +120,8 @@ public sealed class CorpusImporterTests(SpecGraphTestFixture fixture)
         }
 
         Assert.Equal(serverId, started.Intake.SourceServerId);
-        Assert.Equal("moonbeam-specs", started.Intake.Name);
+        // Named for the area it pulled, which is what makes a second pull of it recognisable.
+        Assert.Equal("drones", started.Intake.Name);
         Assert.Equal(
             [$"moonbeam-specs:{Northstar}", $"moonbeam-specs:{Swarm}"],
             started.Sources.OrderBy(s => s.Seq).Select(s => s.SourceRef));
@@ -182,6 +183,45 @@ public sealed class CorpusImporterTests(SpecGraphTestFixture fixture)
         var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
             () => Importer(probe, db).PullAsync(projectId, serverId, null, null, false, "tester"));
         Assert.Contains("not a corpus server", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task APreviewCountsWhatAPullWouldBringInAreaByArea()
+    {
+        var docs = Corpus();
+        docs.Add(new Doc("smashhit/0001-glass-fracture", "draft", "# Glass fracture\n"));
+        var probe = CorpusServer(docs);
+        var (_, serverId, _) = await RegisterAsync(probe);
+
+        await using var db = fixture.NewDb();
+        var areas = await Importer(probe, db).PreviewAsync(serverId);
+
+        Assert.Equal(["drones", "smashhit"], areas.Select(a => a.Area));
+        Assert.Equal(2, areas[0].Documents); // northstar and swarm
+        Assert.Equal(1, areas[0].Retired);   // the superseded one
+        Assert.Equal(1, areas[1].Documents);
+    }
+
+    [Fact]
+    public async Task TheSameAreaCannotBePulledTwiceAndIsListedOnce()
+    {
+        var probe = CorpusServer(Corpus());
+        var (projectId, serverId, _) = await RegisterAsync(probe);
+
+        await using var db = fixture.NewDb();
+        var importer = Importer(probe, db);
+        await importer.PullAsync(projectId, serverId, null, "drones", false, "tester");
+
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => importer.PullAsync(projectId, serverId, null, "drones", false, "tester"));
+        Assert.Contains("already been imported", refusal.Message, StringComparison.Ordinal);
+
+        var listed = Assert.Single(await new IntakeService(db, new FakeModelGateway(), new PostgresArtifactStore(db),
+            new TeamService(db), new SpecGraphService(db), new SpecDiffTranslator(db)).ListAsync(projectId));
+        Assert.Equal("drones", listed.Intake.Name);
+        Assert.Equal(serverId, listed.Intake.SourceServerId);
+        Assert.Equal(2, listed.Documents);
+        Assert.Equal(0, listed.Extracted);
     }
 
     [Fact]

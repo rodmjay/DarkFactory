@@ -116,6 +116,10 @@ export function buildDb(scenario: Scenario): LocalDb {
     server_groups: scenario === "servers-empty" ? [] : serverGroups,
     usage,
     connectors,
+    // The prototype predates connections and imports; the product reads them
+    // from the factory, and the showcase has no state that needs them.
+    connections: [],
+    intakes: [],
   };
 }
 
