@@ -17,7 +17,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, Plus } from "lucide-react";
+import { AlertTriangle, ArrowDown, Plus, RefreshCw } from "lucide-react";
 
 import {
   ApprovalCard,
@@ -207,14 +207,21 @@ function SourcesPanel() {
   const projectName = useQuery((db) => db.project?.name ?? "");
   const sources = useSources();
   const [dialog, setDialog] = React.useState<"connect" | "ingest" | null>(null);
-  const [note, setNote] = React.useState<{ text: string; failed?: boolean } | null>(null);
+  const [note, setNoteState] = React.useState<{ text: string; failed?: boolean; at: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
+
+  // Every answer is stamped with when it was given. A check that finds
+  // nothing new looks exactly like the last one otherwise, and a button
+  // that seems to do nothing when pressed twice reads as broken.
+  const setNote = (value: { text: string; failed?: boolean } | null) =>
+    setNoteState(value ? { ...value, at: new Date().toISOString() } : null);
 
   const corpus = connections.find((c) => c.domain === "corpus");
   const imported = corpus ? intakes.find((i) => i.source_server_id === corpus.id) : undefined;
 
   async function reconnect(serverId: string) {
     setBusy(true);
+    setNote(null);
     const result = await sources.check(serverId);
     setBusy(false);
     setNote(
@@ -226,6 +233,7 @@ function SourcesPanel() {
 
   async function checkForChanges(intakeId: string) {
     setBusy(true);
+    setNote(null);
     const result = await sources.drift(intakeId);
     setBusy(false);
     if (!result.ok) return setNote({ text: result.error, failed: true });
@@ -250,7 +258,7 @@ function SourcesPanel() {
   } else if (corpus.status === "Unreachable") {
     action = (
       <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => reconnect(corpus.id)}>
-        {busy ? "Reconnecting…" : "Reconnect"}
+        {busy ? <Spinning label="Reconnecting…" /> : "Reconnect"}
       </Button>
     );
   } else if (imported) {
@@ -260,7 +268,7 @@ function SourcesPanel() {
           {imported.documents} specs ingested from {corpus.name} · {imported.extracted} extracted
         </p>
         <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => checkForChanges(imported.id)}>
-          {busy ? "Checking…" : "Check for changes"}
+          {busy ? <Spinning label={`Checking ${corpus.name}…`} /> : "Check for changes"}
         </Button>
       </div>
     );
@@ -287,7 +295,18 @@ function SourcesPanel() {
       {action}
 
       {note ? (
-        <p className={cn("text-2xs", note.failed ? "text-status-failed-text" : "text-secondary")}>{note.text}</p>
+        <div
+          role="status"
+          className={cn(
+            "flex flex-col gap-0.5 rounded-control border px-2.5 py-2 text-2xs",
+            note.failed
+              ? "border-status-failed-border bg-status-failed-fill text-status-failed-text"
+              : "border-border-strong bg-sunken text-primary",
+          )}
+        >
+          <span>{note.text}</span>
+          <span className={note.failed ? "opacity-80" : "text-muted"}>{format.at(note.at)}</span>
+        </div>
       ) : null}
 
       <Dialog open={dialog === "connect"} onOpenChange={(open) => setDialog(open ? "connect" : null)}>
@@ -319,6 +338,16 @@ function SourcesPanel() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** A button's in-flight state: it is doing something, and says what. */
+function Spinning({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <RefreshCw aria-hidden className="size-3 animate-spin" />
+      {label}
+    </span>
   );
 }
 
