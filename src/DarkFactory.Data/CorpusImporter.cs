@@ -8,6 +8,10 @@ namespace DarkFactory.Data;
 public sealed record CorpusDocument(
     string Id, string Title, string? Area, string? Status, string? Updated, string Sha256, string? SupersededBy);
 
+/// <summary>What Update from source did: documents brought current, added, dropped — and those it would not touch.</summary>
+public sealed record IntakeRefresh(
+    string IntakeId, int Updated, int Added, int Removed, IReadOnlyList<string> ChangedAfterExtraction);
+
 /// <summary>One area of a corpus: how many documents a pull would import, and how many it would leave out as retired.</summary>
 public sealed record CorpusArea(string Area, int Documents, int Retired);
 
@@ -158,6 +162,115 @@ public sealed class CorpusImporter(DarkFactoryDbContext db, IServerProbe probe, 
             .ToList();
 
         return new CorpusDrift(intakeId, server.Name, changed, added, removed);
+    }
+
+    /// <summary>
+    /// Brings an import up to date with its source, for every document
+    /// nothing has been extracted from yet: edited text is re-fetched (and
+    /// hash-checked, as at pull), new documents in the imported areas are
+    /// added, and documents deleted or retired at the source are dropped.
+    ///
+    /// A document already extracted is not touched — its draft, and any
+    /// answers given about it, were made from the text it has — and is
+    /// reported instead, so re-extracting it is a decision, not a side
+    /// effect. After intake the factory is authoritative (docs/adr/0037);
+    /// before extraction the import is still just a copy, and a stale copy
+    /// is the wrong thing to build a specification from.
+    /// </summary>
+    public async Task<IntakeRefresh> RefreshAsync(string intakeId, CancellationToken cancellationToken = default)
+    {
+        var intakeRow = await db.Intakes.AsNoTracking().SingleOrDefaultAsync(i => i.Id == intakeId, cancellationToken)
+            ?? throw new InvalidOperationException($"No intake '{intakeId}'.");
+        if (intakeRow.SourceServerId is null)
+        {
+            throw new InvalidOperationException(
+                $"Intake '{intakeId}' was submitted inline, not pulled from a corpus server, so there is no source to update from.");
+        }
+
+        var server = await CorpusServerAsync(intakeRow.SourceServerId, cancellationToken);
+        var current = (await ListAsync(server, area: null, cancellationToken)).ToDictionary(d => d.Id, StringComparer.Ordinal);
+
+        var sources = await db.IntakeSources
+            .Where(s => s.IntakeId == intakeId)
+            .OrderBy(s => s.Seq)
+            .ToListAsync(cancellationToken);
+        var imported = sources.Where(s => s.OriginId != null).ToDictionary(s => s.OriginId!, StringComparer.Ordinal);
+        var areas = current.Values.Where(d => imported.ContainsKey(d.Id)).Select(d => d.Area).ToHashSet(StringComparer.Ordinal);
+
+        int updated = 0, added = 0, removed = 0;
+        var changedAfterExtraction = new List<string>();
+
+        foreach (var source in imported.Values)
+        {
+            // Failed has no draft either: nothing was built on its text.
+            var untouched = source.Status is IntakeSourceStatus.Pending or IntakeSourceStatus.Failed;
+
+            if (!current.TryGetValue(source.OriginId!, out var document) || IsRetired(document))
+            {
+                if (untouched)
+                {
+                    db.IntakeSources.Remove(source);
+                    removed++;
+                }
+                else
+                {
+                    changedAfterExtraction.Add(source.OriginId!);
+                }
+                continue;
+            }
+
+            if (string.Equals(document.Sha256, source.OriginSha256, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!untouched)
+            {
+                changedAfterExtraction.Add(source.OriginId!);
+                continue;
+            }
+
+            var (title, text) = await GetAsync(server, document, cancellationToken);
+            source.Title = title;
+            source.Content = text;
+            source.ContentSha256 = SpecGraphService.ComputeHash(text);
+            source.OriginSha256 = document.Sha256;
+            source.OriginUpdated = document.Updated;
+            updated++;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var nextSeq = sources.Count == 0 ? 0 : sources.Max(s => s.Seq);
+        foreach (var document in current.Values
+                     .Where(d => !imported.ContainsKey(d.Id) && areas.Contains(d.Area) && !IsRetired(d))
+                     .OrderBy(d => d.Id, StringComparer.Ordinal))
+        {
+            var (title, text) = await GetAsync(server, document, cancellationToken);
+            db.IntakeSources.Add(new IntakeSource
+            {
+                Id = Ulid.NewUlid(),
+                IntakeId = intakeRow.Id,
+                ProjectId = intakeRow.ProjectId,
+                OrgId = intakeRow.OrgId,
+                Seq = ++nextSeq,
+                SourceRef = $"{server.Name}:{document.Id}",
+                Title = title,
+                Content = text,
+                ContentSha256 = SpecGraphService.ComputeHash(text),
+                OriginId = document.Id,
+                OriginSha256 = document.Sha256,
+                OriginUpdated = document.Updated,
+                Status = IntakeSourceStatus.Pending,
+                DraftRevision = 0,
+                CreatedAt = now,
+            });
+            added++;
+        }
+
+        // Every fetch has succeeded before anything is written, so a refresh
+        // that fails halfway leaves the import exactly as it was.
+        await db.SaveChangesAsync(cancellationToken);
+        return new IntakeRefresh(intakeId, updated, added, removed, changedAfterExtraction);
     }
 
     private async Task<Server> CorpusServerAsync(string serverId, CancellationToken cancellationToken)

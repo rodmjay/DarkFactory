@@ -225,6 +225,64 @@ public sealed class CorpusImporterTests(SpecGraphTestFixture fixture)
     }
 
     [Fact]
+    public async Task UpdateFromSourceBringsUnextractedDocumentsCurrentAndLeavesExtractedOnesAlone()
+    {
+        var docs = Corpus();
+        var probe = CorpusServer(docs);
+        var (projectId, serverId, _) = await RegisterAsync(probe);
+
+        IntakeStarted started;
+        await using (var db = fixture.NewDb())
+        {
+            started = await Importer(probe, db).PullAsync(projectId, serverId, null, "drones", false, "tester");
+        }
+
+        // The swarm has been extracted; the northstar has not.
+        await using (var db = fixture.NewDb())
+        {
+            var swarm = await db.IntakeSources.SingleAsync(s => s.IntakeId == started.Intake.Id && s.OriginId == Swarm);
+            swarm.Status = IntakeSourceStatus.Extracted;
+            swarm.DraftRevision = 1;
+            await db.SaveChangesAsync();
+        }
+
+        // At the source: both edited, one new here, one new in an area never imported.
+        docs[0] = docs[0] with { Text = docs[0].Text + "\nSeveral maps, and drones always fly.\n" };
+        docs[1] = docs[1] with { Text = docs[1].Text + "\nEdited after extraction.\n" };
+        docs.Add(new Doc("drones/0113-new-spec", "draft", "# A new spec\n"));
+        docs.Add(new Doc("smashhit/0002-other", "draft", "# Not this import's\n"));
+
+        IntakeRefresh refresh;
+        await using (var db = fixture.NewDb())
+        {
+            refresh = await Importer(probe, db).RefreshAsync(started.Intake.Id);
+        }
+
+        Assert.Equal(1, refresh.Updated);
+        Assert.Equal(1, refresh.Added);
+        Assert.Equal(0, refresh.Removed);
+        Assert.Equal([Swarm], refresh.ChangedAfterExtraction);
+
+        await using (var verify = fixture.NewDb())
+        {
+            var sources = await verify.IntakeSources.Where(s => s.IntakeId == started.Intake.Id).ToListAsync();
+            var northstar = sources.Single(s => s.OriginId == Northstar);
+            Assert.Contains("Several maps, and drones always fly.", northstar.Content, StringComparison.Ordinal);
+            Assert.Equal(SpecGraphService.ComputeHash(docs[0].Text), northstar.OriginSha256);
+            Assert.Equal(SpecGraphService.ComputeHash(docs[0].Text), northstar.ContentSha256);
+            Assert.DoesNotContain("Edited after extraction.", sources.Single(s => s.OriginId == Swarm).Content, StringComparison.Ordinal);
+            Assert.Equal("moonbeam-specs:drones/0113-new-spec", sources.Single(s => s.OriginId == "drones/0113-new-spec").SourceRef);
+            Assert.DoesNotContain(sources, s => s.OriginId == "smashhit/0002-other");
+        }
+
+        // What is left to report is exactly the document it would not touch.
+        await using var db2 = fixture.NewDb();
+        var drift = await Importer(probe, db2).DriftAsync(started.Intake.Id);
+        Assert.Equal(Swarm, Assert.Single(drift.Changed).OriginId);
+        Assert.Empty(drift.Added);
+    }
+
+    [Fact]
     public async Task DriftReportsWhatChangedWasAddedAndWasRemovedSinceThePull()
     {
         var docs = Corpus();

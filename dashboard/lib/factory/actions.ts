@@ -23,7 +23,9 @@ import {
   listServers,
   previewCorpus,
   pullIntake,
+  refreshIntake,
   registerServer,
+  type IntakeRefresh,
   type CorpusArea,
   type CorpusDrift,
   type FactoryIntake,
@@ -170,6 +172,10 @@ export async function ingestSpecsAction(
 
 export async function driftAction(intakeId: string): Promise<Result<CorpusDrift>> {
   return attempt(() => intakeDrift(intakeId));
+}
+
+export async function refreshIntakeAction(intakeId: string): Promise<Result<IntakeRefresh>> {
+  return attempt(() => refreshIntake(intakeId));
 }
 
 /** The factory records the reason with the rejection, so an empty one is refused here first. */

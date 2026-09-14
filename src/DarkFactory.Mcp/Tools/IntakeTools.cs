@@ -92,6 +92,14 @@ public static class IntakeTools
             drift.Removed);
     }
 
+    [McpServerTool(Name = "df.intake.refresh"),
+     Description("Update an import from its corpus server: re-fetch edited documents nothing has been extracted from yet, add new ones in the imported areas, drop ones deleted or superseded at the source. Documents already extracted are reported, not changed.")]
+    public static async Task<IntakeRefresh> Refresh(
+        CorpusImporter importer,
+        [Description("The intake id.")] string intake_id,
+        CancellationToken cancellationToken = default) =>
+        await Errors.Surfacing(() => importer.RefreshAsync(intake_id, cancellationToken));
+
     [McpServerTool(Name = "df.intake.extract"),
      Description("Extract, or re-extract, one source document: a draft of small spec nodes plus the holes an implementer would have to guess at, raised as questions. Re-extracting builds answered questions into the draft.")]
     public static async Task<IntakeExtractResult> Extract(

@@ -431,6 +431,19 @@ export interface CorpusDrift {
   removed: string[];
 }
 
+export interface IntakeRefresh {
+  intake_id: string;
+  updated: number;
+  added: number;
+  removed: number;
+  changed_after_extraction: string[];
+}
+
+/** Re-fetches every edited document, so it is given minutes like a pull. */
+export function refreshIntake(intakeId: string): Promise<IntakeRefresh> {
+  return callTool("df.intake.refresh", { intake_id: intakeId }, { timeoutMs: 5 * 60_000 });
+}
+
 export function intakeDrift(intakeId: string): Promise<CorpusDrift> {
   return callTool("df.intake.drift", { intake_id: intakeId }, { timeoutMs: 60_000 });
 }

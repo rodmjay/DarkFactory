@@ -209,6 +209,8 @@ function SourcesPanel() {
   const [dialog, setDialog] = React.useState<"connect" | "ingest" | null>(null);
   const [note, setNoteState] = React.useState<{ text: string; failed?: boolean; at: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
+  /** Set when the last check found differences — the moment Update from source is offered. */
+  const [stale, setStale] = React.useState(false);
 
   // Every answer is stamped with when it was given. A check that finds
   // nothing new looks exactly like the last one otherwise, and a button
@@ -238,11 +240,29 @@ function SourcesPanel() {
     setBusy(false);
     if (!result.ok) return setNote({ text: result.error, failed: true });
     const { changed, added, removed } = result.data;
+    setStale(changed.length + added.length + removed.length > 0);
     setNote({
       text:
         changed.length + added.length + removed.length === 0
           ? "No changes at the source since the import."
           : `Since the import: ${changed.length} edited, ${added.length} new, ${removed.length} removed at the source.`,
+    });
+  }
+
+  async function updateFromSource(intakeId: string) {
+    setBusy(true);
+    setNote(null);
+    const result = await sources.refresh(intakeId);
+    setBusy(false);
+    if (!result.ok) return setNote({ text: result.error, failed: true });
+    const { updated, added, removed, changed_after_extraction: kept } = result.data;
+    setStale(kept.length > 0);
+    setNote({
+      text:
+        `Updated from source: ${updated} brought current, ${added} added, ${removed} dropped.` +
+        (kept.length > 0
+          ? ` ${kept.length} already extracted and left as they were — re-extract them to take the new text.`
+          : ""),
     });
   }
 
@@ -306,6 +326,21 @@ function SourcesPanel() {
         >
           <span>{note.text}</span>
           <span className={note.failed ? "opacity-80" : "text-muted"}>{format.at(note.at)}</span>
+          {stale && imported && !note.failed ? (
+            <Button
+              size="sm"
+              variant="needs-you"
+              className="mt-1.5 w-full"
+              disabled={busy}
+              onClick={() => updateFromSource(imported.id)}
+            >
+              Update from source
+            </Button>
+          ) : null}
+        </div>
+      ) : busy && imported ? (
+        <div role="status" className="rounded-control border border-border-strong bg-sunken px-2.5 py-2 text-2xs text-secondary">
+          <Spinning label={`Working with ${corpus?.name ?? "the server"}…`} />
         </div>
       ) : null}
 

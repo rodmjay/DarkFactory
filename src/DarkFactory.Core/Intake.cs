@@ -55,16 +55,20 @@ public sealed class IntakeSource
 
     /// <summary>Where the document came from, e.g. <c>moonbeam-specs:specs/drones/0079-the-working-swarm.md</c>. Cited in every node it yields.</summary>
     public required string SourceRef { get; init; }
-    public required string Title { get; init; }
-    public required string Content { get; init; }
-    public required string ContentSha256 { get; init; }
+
+    // Settable for one reason: Update from source (docs/adr/0038) replaces a
+    // document's text while nothing has been extracted from it yet. Once a
+    // draft exists the text it was drafted from stays put.
+    public required string Title { get; set; }
+    public required string Content { get; set; }
+    public required string ContentSha256 { get; set; }
 
     /// <summary>The document's id on the corpus server, when pulled from one.</summary>
     public string? OriginId { get; init; }
 
-    /// <summary>The hash the server listed at pull time — what drift is measured against.</summary>
-    public string? OriginSha256 { get; init; }
-    public string? OriginUpdated { get; init; }
+    /// <summary>The hash the server listed when this text was fetched — what drift is measured against.</summary>
+    public string? OriginSha256 { get; set; }
+    public string? OriginUpdated { get; set; }
     public required IntakeSourceStatus Status { get; set; }
 
     /// <summary>

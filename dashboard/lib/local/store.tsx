@@ -28,6 +28,7 @@ import {
   ingestSpecsAction,
   loadSources,
   previewCorpusAction,
+  refreshIntakeAction,
   type Result,
   approveAction,
   loadConversation,
@@ -46,6 +47,7 @@ import type {
   FactoryIntake,
   FactoryProject,
   FactoryServer,
+  IntakeRefresh,
 } from "../factory/mcp";
 import type {
   ConnectionRow,
@@ -158,6 +160,7 @@ export interface SourcesControls {
   preview: (serverId: string) => Promise<Result<CorpusArea[]>>;
   ingest: (serverId: string, area: string) => Promise<Result<{ intake_id: string; name: string; documents: number }>>;
   drift: (intakeId: string) => Promise<Result<CorpusDrift>>;
+  refresh: (intakeId: string) => Promise<Result<IntakeRefresh>>;
 }
 
 interface LocalDbContextValue {
@@ -555,6 +558,7 @@ export function LocalDbProvider({
         return result;
       },
       drift: (intakeId) => driftAction(intakeId),
+      refresh: async (intakeId) => refreshAfter(await refreshIntakeAction(intakeId)),
     };
   }, [projectId, workspaceUrl, factorySources, reloadSources, reloadConversations]);
 
