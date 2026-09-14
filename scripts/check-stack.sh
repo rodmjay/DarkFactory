@@ -211,8 +211,27 @@ check_web() {
         return 1
     fi
 
-    PORT="$port" pnpm --filter dashboard start > "$log" 2>&1 &
+    # A server left on this port by an earlier run answers the health check
+    # for this build and serves none of its files — a 500 on every asset.
+    # That is how an orphaned next-server was found on 2026-09-14, a day
+    # after the run that started it. Refuse rather than test the wrong server.
+    if curl -s -o /dev/null "http://localhost:$port/" 2>/dev/null; then
+        rm -f "$log"
+        fail "port $port is already serving something (ss -ltnp | grep :$port) — stop it or set WEB_SMOKE_PORT"
+        return 1
+    fi
+
+    # Its own process group, so stopping it stops next-server too. Killing
+    # pnpm alone left next-server running: the asset check below passed only
+    # because that orphan was still answering, and it held the port for every
+    # later run.
+    if command -v setsid >/dev/null 2>&1; then
+        PORT="$port" setsid pnpm --filter dashboard start > "$log" 2>&1 &
+    else
+        PORT="$port" pnpm --filter dashboard start > "$log" 2>&1 &
+    fi
     local pid=$!
+    stop_web() { kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; }
 
     local ok=1
     for _ in $(seq 1 30); do
@@ -221,9 +240,8 @@ check_web() {
         sleep 1
     done
 
-    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-
     if [ "$ok" -ne 0 ]; then
+        stop_web
         tail -15 "$log"; rm -f "$log"
         fail "pnpm start never served /api/health on port $port"
         return 1
@@ -235,6 +253,7 @@ check_web() {
     # telling you the configuration is unsupported. A health check alone
     # goes green on a command Next says does not work.
     if grep -qiE 'does not work with|is not supported|deprecated and will be removed' "$log"; then
+        stop_web
         printf '\n'; grep -iE 'does not work with|is not supported|deprecated and will be removed' "$log" | sed 's/^/        /'
         rm -f "$log"
         fail "pnpm start answered, but reported its own configuration unsupported"
@@ -255,6 +274,7 @@ check_web() {
     css=$(printf '%s' "$page" | grep -oE '/_next/static/[^"]+\.css' | head -1)
 
     if [ -z "$css" ]; then
+        stop_web
         rm -f "$log"
         fail "the page referenced no stylesheet — served markup with no assets"
         return 1
@@ -263,6 +283,9 @@ check_web() {
     asset_status=$(curl -s -o /tmp/df-asset -w '%{http_code}' "http://localhost:$port$css" 2>/dev/null || echo 000)
     asset_bytes=$(wc -c < /tmp/df-asset 2>/dev/null || echo 0)
     rm -f /tmp/df-asset
+
+    # Stopped before judging, so no outcome below leaves it on the port.
+    stop_web
 
     if [ "$asset_status" != "200" ] || [ "$asset_bytes" -lt 100 ]; then
         rm -f "$log"
