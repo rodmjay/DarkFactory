@@ -42,6 +42,35 @@ public sealed record IntakeHole(
 
 public sealed record IntakePaths(int QuestionsUpdated, int SourcesProcessed, ModelUsage Usage);
 
+/// <summary>What a person should do next on an import (docs/adr/0039), one step at a time.</summary>
+public static class IntakeSteps
+{
+    /// <summary>Choose a path for <see cref="IntakeNextStep.Question"/>, write one, or defer it.</summary>
+    public const string Decide = "decide";
+
+    /// <summary>Answers are in; the document's draft must be rebuilt with them before it can be proposed.</summary>
+    public const string Rebuild = "rebuild";
+
+    /// <summary>Nothing blocks the document: put its drafted specs into pending, where approval picks them up.</summary>
+    public const string Propose = "propose";
+
+    /// <summary>Nothing is waiting on a person, but a document has not been read yet, or its reading was refused.</summary>
+    public const string Extract = "extract";
+
+    /// <summary>Every document is proposed or yielded nothing.</summary>
+    public const string Done = "done";
+}
+
+/// <summary>
+/// <paramref name="Settled"/>: documents proposed, or read and yielding
+/// nothing once their questions were closed. <paramref name="WithoutPaths"/>:
+/// open questions that have no suggested answers yet.
+/// </summary>
+public sealed record IntakeProgress(int Documents, int Settled, int OpenQuestions, int WithoutPaths);
+
+public sealed record IntakeNextStep(
+    string Step, IntakeSource? Source, IntakeQuestion? Question, int OpenInSource, int Nodes, IntakeProgress Progress);
+
 /// <summary>
 /// Corpus intake (docs/adr/0037): extract, find holes, ask, fill, propose.
 ///
@@ -513,6 +542,61 @@ public sealed class IntakeService(
             Count(s.Id, IntakeQuestionStatus.Answered),
             Count(s.Id, IntakeQuestionStatus.Deferred),
             Count(s.Id, IntakeQuestionStatus.Resolved))).ToList());
+    }
+
+    /// <summary>
+    /// The one thing a person should do next (docs/adr/0039), so building
+    /// the specs is a sequence of decisions the factory puts in front of
+    /// them rather than questions they have to know to ask. Documents go in
+    /// corpus order — the scope document sorts first, and settling scope
+    /// first is what makes every later answer cheaper. Within a document the
+    /// order is the order ProposeAsync enforces: close every question, rebuild
+    /// the draft with the answers, then propose. A document still waiting to
+    /// be read never blocks one that is ready.
+    /// </summary>
+    public async Task<IntakeNextStep> NextAsync(string intakeId, CancellationToken cancellationToken = default)
+    {
+        var overview = await GetAsync(intakeId, cancellationToken);
+        var questions = await db.IntakeQuestions.AsNoTracking()
+            .Where(q => q.IntakeId == intakeId)
+            .OrderBy(q => q.CreatedAt).ThenBy(q => q.Id)
+            .ToListAsync(cancellationToken);
+
+        bool Unincorporated(string sourceId) => questions.Any(q =>
+            q.SourceId == sourceId && q.Status == IntakeQuestionStatus.Answered && q.IncorporatedInRevision is null);
+        bool Settled(IntakeSourceOverview s) =>
+            s.Source.Status == IntakeSourceStatus.Proposed
+            || (s.Source.Status == IntakeSourceStatus.Extracted && s.Open == 0 && s.Nodes == 0 && !Unincorporated(s.Source.Id));
+
+        var open = questions.Where(q => q.Status == IntakeQuestionStatus.Open).ToList();
+        var progress = new IntakeProgress(
+            overview.Sources.Count,
+            overview.Sources.Count(Settled),
+            open.Count,
+            open.Count(q => q.OptionsJson is null));
+
+        foreach (var s in overview.Sources.Where(s => s.Source.Status == IntakeSourceStatus.Extracted))
+        {
+            if (s.Open > 0)
+            {
+                return new IntakeNextStep(IntakeSteps.Decide, s.Source,
+                    open.First(q => q.SourceId == s.Source.Id), s.Open, s.Nodes, progress);
+            }
+            if (Unincorporated(s.Source.Id))
+            {
+                return new IntakeNextStep(IntakeSteps.Rebuild, s.Source, null, 0, s.Nodes, progress);
+            }
+            if (s.Nodes > 0)
+            {
+                return new IntakeNextStep(IntakeSteps.Propose, s.Source, null, 0, s.Nodes, progress);
+            }
+        }
+
+        var unread = overview.Sources.FirstOrDefault(s =>
+            s.Source.Status is IntakeSourceStatus.Pending or IntakeSourceStatus.Failed);
+        return unread is null
+            ? new IntakeNextStep(IntakeSteps.Done, null, null, 0, 0, progress)
+            : new IntakeNextStep(IntakeSteps.Extract, unread.Source, null, 0, 0, progress);
     }
 
     /// <summary>

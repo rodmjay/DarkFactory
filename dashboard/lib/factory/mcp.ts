@@ -473,14 +473,68 @@ export async function querySpecNodes(projectId: string): Promise<FactorySpecNode
   return (await callTool<FactorySpecNode[]>("df.specs.query", { project_id: projectId, limit: 1000 })) ?? [];
 }
 
+/** One path open to whoever answers (contracts/schemas/decision.schema.json's option). */
+export interface FactoryOption {
+  id: string;
+  label: string;
+  consequence?: string | null;
+  recommended: boolean;
+}
+
 export interface FactoryIntakeQuestion {
   question_id: string;
+  source_id?: string;
+  source_ref?: string | null;
   kind: string;
   status: string;
   question: string;
   quote?: string | null;
   answer?: string | null;
   affects: number[];
+  /** Empty until extraction or df.intake.suggest_paths supplies them (ADR-0039). */
+  options?: FactoryOption[];
+}
+
+/** `IntakeNextResult` from `df.intake.next`: the one thing to do next on an import. */
+export interface IntakeNextStep {
+  intake_id: string;
+  step: "decide" | "rebuild" | "propose" | "extract" | "done";
+  source_id?: string | null;
+  source_ref?: string | null;
+  source_title?: string | null;
+  question?: FactoryIntakeQuestion | null;
+  open_in_source: number;
+  nodes: number;
+  documents: number;
+  settled: number;
+  open_questions: number;
+  without_paths: number;
+}
+
+export function nextIntakeStep(intakeId: string): Promise<IntakeNextStep> {
+  return callTool("df.intake.next", { intake_id: intakeId });
+}
+
+export function answerQuestion(questionId: string, answer: string): Promise<FactoryIntakeQuestion> {
+  return callTool("df.intake.answer", { question_id: questionId, answer });
+}
+
+export function deferQuestion(questionId: string, reason: string): Promise<FactoryIntakeQuestion> {
+  return callTool("df.intake.defer", { question_id: questionId, reason });
+}
+
+/** One extraction is a single long model call, so it gets minutes, not seconds. */
+export function extractSource(sourceId: string): Promise<{ accepted: boolean; errors: string[] }> {
+  return callTool("df.intake.extract", { source_id: sourceId }, { timeoutMs: 10 * 60_000 });
+}
+
+export function proposeSource(sourceId: string): Promise<{ amendment_id: string; status: string }> {
+  return callTool("df.intake.propose", { source_id: sourceId });
+}
+
+/** One model call per document with questions lacking paths. */
+export function suggestPaths(intakeId: string): Promise<{ questions_updated: number; sources_processed: number }> {
+  return callTool("df.intake.suggest_paths", { intake_id: intakeId }, { timeoutMs: 15 * 60_000 });
 }
 
 /** `IntakeSourceView` from `df.intake.source`: one document's text, draft and questions. */

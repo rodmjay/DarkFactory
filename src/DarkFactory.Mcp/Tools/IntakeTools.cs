@@ -117,6 +117,29 @@ public static class IntakeTools
         return new IntakePathsResult(result.QuestionsUpdated, result.SourcesProcessed, result.Usage.TotalTokens);
     }
 
+    [McpServerTool(Name = "df.intake.next"),
+     Description("The one thing a person should do next on an import (ADR-0039): decide a question (with its paths), rebuild a document's draft with the answers, propose a document's specs into pending, extract an unread document, or done. Documents go in corpus order, scope first.")]
+    public static async Task<IntakeNextResult> Next(
+        IntakeService intake,
+        [Description("The intake id.")] string intake_id,
+        CancellationToken cancellationToken = default)
+    {
+        var next = await Errors.Surfacing(() => intake.NextAsync(intake_id, cancellationToken));
+        return new IntakeNextResult(
+            intake_id,
+            next.Step,
+            next.Source?.Id,
+            next.Source?.SourceRef,
+            next.Source?.Title,
+            next.Question is null ? null : Row(next.Question, next.Source?.SourceRef),
+            next.OpenInSource,
+            next.Nodes,
+            next.Progress.Documents,
+            next.Progress.Settled,
+            next.Progress.OpenQuestions,
+            next.Progress.WithoutPaths);
+    }
+
     [McpServerTool(Name = "df.intake.guide"),
      Description("Set the project owner's standing guidance for an import — e.g. \"live scope only; deferred documents produce no nodes\". Every later extraction is shown it. Empty clears it.")]
     public static async Task<IntakeGuidance> Guide(
@@ -318,6 +341,20 @@ public sealed record IntakeQuestionRow(
     IReadOnlyList<IntakeOption> Options);
 
 public sealed record IntakePathsResult(int QuestionsUpdated, int SourcesProcessed, int TokensUsed);
+
+public sealed record IntakeNextResult(
+    string IntakeId,
+    string Step,
+    string? SourceId,
+    string? SourceRef,
+    string? SourceTitle,
+    IntakeQuestionRow? Question,
+    int OpenInSource,
+    int Nodes,
+    int Documents,
+    int Settled,
+    int OpenQuestions,
+    int WithoutPaths);
 
 public sealed record IntakeExtractResult(
     string SourceId,

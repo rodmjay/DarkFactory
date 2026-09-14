@@ -17,6 +17,13 @@
 
 import {
   FactoryError,
+  answerQuestion,
+  deferQuestion,
+  extractSource,
+  nextIntakeStep,
+  proposeSource,
+  suggestPaths,
+  type IntakeNextStep,
   checkServer,
   intakeDrift,
   listIntakes,
@@ -215,6 +222,47 @@ export async function loadIntakeSourceAction(sourceId: string): Promise<Result<F
 
 export async function refreshIntakeAction(intakeId: string): Promise<Result<IntakeRefresh>> {
   return attempt(() => refreshIntake(intakeId));
+}
+
+// ------------------------------------------------------------ the guided walk
+
+/**
+ * The one thing to do next on this project's imports (ADR-0039): the
+ * oldest import that is not done, or the last import's "done" when all are.
+ * Null when nothing has been imported.
+ */
+export async function loadNextStepAction(projectId: string): Promise<Result<IntakeNextStep | null>> {
+  return attempt(async () => {
+    const intakes = await listIntakes(projectId);
+    let last: IntakeNextStep | null = null;
+    for (const intake of intakes) {
+      last = await nextIntakeStep(intake.intake_id);
+      if (last.step !== "done") return last;
+    }
+    return last;
+  });
+}
+
+export async function answerAction(questionId: string, answer: string): Promise<Result<void>> {
+  if (answer.trim() === "") return { ok: false, error: "Choose a path or write an answer." };
+  return attempt(async () => void (await answerQuestion(questionId, answer.trim())));
+}
+
+export async function deferAction(questionId: string, reason: string): Promise<Result<void>> {
+  return attempt(async () => void (await deferQuestion(questionId, reason.trim() || "Left open for now.")));
+}
+
+export async function rebuildDraftAction(sourceId: string): Promise<Result<{ accepted: boolean; errors: string[] }>> {
+  return attempt(() => extractSource(sourceId));
+}
+
+/** Puts a document's specs into pending. Approval is a separate, later step. */
+export async function proposeSourceAction(sourceId: string): Promise<Result<{ amendment_id: string }>> {
+  return attempt(() => proposeSource(sourceId));
+}
+
+export async function suggestPathsAction(intakeId: string): Promise<Result<{ questions_updated: number }>> {
+  return attempt(() => suggestPaths(intakeId));
 }
 
 /** The factory records the reason with the rejection, so an empty one is refused here first. */
