@@ -59,7 +59,13 @@ gitleaks_run() {
     if command -v gitleaks >/dev/null 2>&1; then
         gitleaks "$@" --no-banner --redact
     else
-        docker run --rm -v "$REPO:/repo" -w /repo "$IMAGE" "$@" --no-banner --redact
+        # A worktree's .git is a file pointing into the main checkout's .git by
+        # absolute path. Mount that too, at the same path, or git inside the
+        # container finds no repository and the history scan reads nothing —
+        # and reports that as a pass.
+        local common
+        common=$(cd "$(git rev-parse --git-common-dir)" && pwd)
+        docker run --rm -v "$REPO:/repo" -v "$common:$common" -w /repo "$IMAGE" "$@" --no-banner --redact
     fi
 }
 
@@ -171,8 +177,20 @@ fi
 
 if [ "$MODE" != "--tree-only" ]; then
     say "History (every commit on every branch)"
-    if gitleaks_run detect --source .; then
-        pass "no credentials in any commit"
+    history_log=$(mktemp)
+    if gitleaks_run detect --source . --log-opts="--all" > "$history_log" 2>&1; then history_rc=0; else history_rc=$?; fi
+    cat "$history_log"
+    scanned=$(grep -oE '[0-9]+ commits scanned' "$history_log" | grep -oE '^[0-9]+' | tail -1)
+    rm -f "$history_log"
+    commits=$(git rev-list --all --count)
+
+    if [ "$history_rc" -eq 0 ] && [ "${scanned:-0}" -eq 0 ] && [ "$commits" -gt 0 ]; then
+        # "No leaks" about zero commits has checked nothing. Run from a
+        # worktree, that is what this scan used to report — as a pass.
+        fail "the history scan read 0 of $commits commits — it checked nothing"
+        status=1
+    elif [ "$history_rc" -eq 0 ]; then
+        pass "no credentials in any commit ($scanned scanned)"
     else
         fail "gitleaks found credentials in history"
         printf '\033[33mDeleting the file in a later commit does not fix this — the object is\n' >&2
