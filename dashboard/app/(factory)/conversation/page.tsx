@@ -401,13 +401,25 @@ function ConnectionItem({ connection }: { connection: ConnectionRow }) {
         ? `Last answered ${format.at(connection.last_seen_at)} · ${connection.url}`
         : connection.url;
 
+  // What it is for, and for whom — as the server said in its handshake.
+  // `moonbeam-specs` is the same name for every game, so the name alone
+  // cannot answer "is this the drones server?".
+  const role =
+    connection.domain === "corpus" ? "specs" : connection.domain === "workspace" ? "code" : connection.domain;
+  const serves =
+    connection.domain === "standards" ? "shared" : connection.scope ? `${connection.scope} only` : "all projects";
+
   return (
-    <li className="flex items-center gap-1.5 text-2xs" title={title}>
-      <span className={cn("shrink-0 rounded-pill border px-1.5 text-[10px]", tone)}>
-        {connection.status === "Conformant" ? "connected" : connection.status.toLowerCase()}
+    <li className="flex flex-col gap-0.5 text-2xs" title={title}>
+      <div className="flex items-center gap-1.5">
+        <span className={cn("shrink-0 rounded-pill border px-1.5 text-[10px]", tone)}>
+          {connection.status === "Conformant" ? "connected" : connection.status.toLowerCase()}
+        </span>
+        <span className="truncate text-primary">{connection.name}</span>
+      </div>
+      <span className="truncate pl-0.5 text-muted">
+        {role} · {serves}
       </span>
-      <span className="truncate text-primary">{connection.name}</span>
-      <span className="ml-auto shrink-0 text-muted">{connection.domain}</span>
     </li>
   );
 }

@@ -61,6 +61,9 @@ public sealed class ConversationContextTests(SpecGraphTestFixture fixture)
         LastSeenAt = status == ServerStatus.Unreachable ? DateTimeOffset.UtcNow.AddMinutes(-10) : DateTimeOffset.UtcNow,
         UnreachableSince = status == ServerStatus.Unreachable ? DateTimeOffset.UtcNow.AddMinutes(-9) : null,
         LastError = status == ServerStatus.Unreachable ? "connection refused" : null,
+        LiveDescribeJson = domain == "corpus"
+            ? """{"name":"moonbeam-specs","effective_config":{"project":"drones"}}"""
+            : null,
     };
 
     private async Task<(FakeModelGateway Gateway, ContextPack Pack)> TurnAsync(string conversationId)
@@ -95,7 +98,8 @@ public sealed class ConversationContextTests(SpecGraphTestFixture fixture)
 
         Assert.Equal(["drones-workspace", "moonbeam-specs"], pack.Connections.Select(c => c.Name).Order());
         var prompt = gateway.Requests[0].SystemPrompt;
-        Assert.Contains("`moonbeam-specs` (corpus) — Conformant, last answered", prompt, StringComparison.Ordinal);
+        // Which project it serves, as its handshake said — the name alone is the same for every game.
+        Assert.Contains("`moonbeam-specs` (corpus, drones only) — Conformant, last answered", prompt, StringComparison.Ordinal);
         Assert.Contains("`drones-workspace` (workspace) — Unreachable since", prompt, StringComparison.Ordinal);
         Assert.Contains("connection refused", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("someone-elses", prompt, StringComparison.Ordinal);

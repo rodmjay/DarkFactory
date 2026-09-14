@@ -124,13 +124,16 @@ public sealed record ServerSummary(
     int HealCount,
     // The project a server was registered for; null for org-wide servers and
     // for a workspace, which a project is bound to by URL instead.
-    string? ProjectId)
+    string? ProjectId,
+    // What the server said it serves — a project, a repo — or null when it
+    // serves no single one (docs/adr/0038). See ServerScope.
+    string? Scope)
 {
     public static ServerSummary From(Server s) => new(
         s.Id, s.Url, s.Name, s.Domain, s.Tier.ToString(), s.ConventionVersion,
         s.Status.ToString(), s.ManifestDiffJson, s.RegisteredAt, s.LastConformanceAt,
         s.LastCheckedAt, s.LastSeenAt, s.UnreachableSince, s.ConsecutiveFailures, s.LastError,
-        s.NextCheckAt, s.HealedAt, s.HealCount, s.ProjectId);
+        s.NextCheckAt, s.HealedAt, s.HealCount, s.ProjectId, ServerScope.Of(s.Domain, s.LiveDescribeJson));
 }
 
 public sealed record ServerCheckResult(string Outcome, ServerSummary Server);

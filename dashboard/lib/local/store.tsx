@@ -634,6 +634,7 @@ function toSources(data: { servers: FactoryServer[]; intakes: FactoryIntake[] })
       domain: s.domain,
       url: s.url,
       status: s.status,
+      scope: s.scope,
       last_seen_at: s.last_seen_at,
       unreachable_since: s.unreachable_since,
       last_error: s.last_error,

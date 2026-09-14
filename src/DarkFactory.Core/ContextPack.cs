@@ -75,7 +75,9 @@ public sealed record ContextConnection(
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("last_seen_at")] DateTimeOffset? LastSeenAt,
     [property: JsonPropertyName("unreachable_since")] DateTimeOffset? UnreachableSince,
-    [property: JsonPropertyName("last_error")] string? LastError);
+    [property: JsonPropertyName("last_error")] string? LastError,
+    // The project or repo the server said it serves; null for a shared one.
+    [property: JsonPropertyName("scope")] string? Scope = null);
 
 public sealed record ContextImport(
     [property: JsonPropertyName("intake_id")] string IntakeId,

@@ -156,7 +156,13 @@ public static class ArchitectPrompt
             var standing = server.Status == nameof(ServerStatus.Unreachable)
                 ? $"Unreachable since {Utc(server.UnreachableSince)}{(server.LastError is null ? "" : $" ({server.LastError})")}; the factory is retrying"
                 : $"{server.Status}, last answered {Utc(server.LastSeenAt)}";
-            builder.AppendLine($"- `{server.Name}` ({server.Domain}) — {standing} — {server.Url}");
+            // Which project the server serves, as it said itself — names like
+            // `moonbeam-specs` are the same for every game, so without this
+            // "is it the drones server?" has no answer here.
+            var serves = server.Domain == StandardsIngestService.Domain
+                ? ", shared by every project"
+                : server.Scope is { } scope ? $", {scope} only" : "";
+            builder.AppendLine($"- `{server.Name}` ({server.Domain}{serves}) — {standing} — {server.Url}");
         }
         builder.AppendLine();
 

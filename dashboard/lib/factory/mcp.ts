@@ -367,6 +367,8 @@ export interface FactoryServer {
   domain: string;
   status: string;
   project_id?: string | null;
+  /** What the server said it serves — a project or a repo; null when shared or unscoped. */
+  scope?: string | null;
   last_seen_at?: string | null;
   unreachable_since?: string | null;
   last_error?: string | null;

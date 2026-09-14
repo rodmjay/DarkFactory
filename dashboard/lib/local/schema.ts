@@ -105,6 +105,8 @@ export interface ConnectionRow {
   url: string;
   /** Registered | Conformant | Degraded | Failed | Unreachable. */
   status: string;
+  /** The project or repo it serves, from its own handshake; null when shared or unscoped. */
+  scope?: string | null;
   last_seen_at?: string | null;
   unreachable_since?: string | null;
   last_error?: string | null;

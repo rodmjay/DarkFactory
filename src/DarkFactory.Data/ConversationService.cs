@@ -450,7 +450,8 @@ public sealed class ConversationService(
 
         return servers
             .Select(s => new ContextConnection(
-                s.Name, s.Domain, s.Url, s.Status.ToString(), s.LastSeenAt, s.UnreachableSince, s.LastError))
+                s.Name, s.Domain, s.Url, s.Status.ToString(), s.LastSeenAt, s.UnreachableSince, s.LastError,
+                ServerScope.Of(s.Domain, s.LiveDescribeJson)))
             .ToList();
     }
 
