@@ -1,4 +1,4 @@
-# 0010 — Guided spec building: decisions with paths, one step at a time
+# 0011 — Guided spec building: decisions with paths, one step at a time
 
 ## Instruction (verbatim)
 > I would like to return structured json data using json scema and return UI that has actionable items that need to be doen by me with potential paths, we must simplify this a lot
@@ -15,7 +15,7 @@
 `da3b907` options · `c2f1947` next step · `c57aa8c` cost · `54cefe8` DecisionCard · `e7a4b62` guided screen (branch `drones-intake`)
 
 ## What changed
-- **Decision payload** (ADR-0039, `contracts/schemas/decision.schema.json`) and `DecisionCard` in `@dark-factory/ui`: pick a path, write your own, or leave open. Showcase, baselines, export.
+- **Decision payload** (ADR-0041, `contracts/schemas/decision.schema.json`) and `DecisionCard` in `@dark-factory/ui`: pick a path, write your own, or leave open. Showcase, baselines, export.
 - **Paths on questions**: `intake_questions.options_json` (0014). Extraction may return 2–4 options per hole; `df.intake.suggest_paths` fills questions that have none.
 - **`df.intake.next`**: the one step due — decide, rebuild, propose (into pending), extract, done. Corpus order, scope first.
 - **Guide panel** at the top of the conversation screen: shows only that step, with its button, a spinner while running and the result with a time.
@@ -33,6 +33,7 @@
 - Cache writes priced at the 5-minute rate: the gateway sets no TTL.
 
 ## Things I was wrong about
+- I numbered this ADR-0039 and this report 0010 without looking at the `spec-strategies` branch, which had already taken ADR-0039, ADR-0040 and handoff 0010. Renumbered to ADR-0041 and 0011 before merging to main; commit messages before the renumber still say ADR-0039.
 - I trusted `ModelUsage`'s "portions of input" comment; the gateway never honoured it.
 - My first "unread first" plant went after the loop and changed nothing. Re-planted before it; red.
 

@@ -150,7 +150,7 @@ export function DomainComponents() {
 
       <Block
         title="DecisionCard"
-        note="Something a person has to decide, with the paths open (ADR-0039) — an intake question, a scope conflict the architect found, a gap nobody specified. The recommended option is marked, never preselected: it is the proposer's view, and choosing it is still the person's decision. Leaving it open asks for a reason."
+        note="Something a person has to decide, with the paths open (ADR-0041) — an intake question, a scope conflict the architect found, a gap nobody specified. The recommended option is marked, never preselected: it is the proposer's view, and choosing it is still the person's decision. Leaving it open asks for a reason."
       >
         <div className="grid gap-3 lg:grid-cols-2">
           <Frame label="open — with a recommended option">

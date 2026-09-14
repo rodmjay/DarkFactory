@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://darkfactory.dev/schemas/decision.schema.json",
   "title": "Decision",
-  "description": "Something a person has to decide, with the paths open to them (ADR-0039). The one shape every 'this needs you' takes — an intake question, a scope conflict the architect found, a gap nobody specified — so the dashboard renders all of them as the same actionable card rather than as prose to be read and answered by typing.",
+  "description": "Something a person has to decide, with the paths open to them (ADR-0041). The one shape every 'this needs you' takes — an intake question, a scope conflict the architect found, a gap nobody specified — so the dashboard renders all of them as the same actionable card rather than as prose to be read and answered by typing.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "title", "options"],

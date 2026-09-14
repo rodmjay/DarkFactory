@@ -42,7 +42,7 @@ public sealed record IntakeHole(
 
 public sealed record IntakePaths(int QuestionsUpdated, int SourcesProcessed, ModelUsage Usage);
 
-/// <summary>What a person should do next on an import (docs/adr/0039), one step at a time.</summary>
+/// <summary>What a person should do next on an import (docs/adr/0041), one step at a time.</summary>
 public static class IntakeSteps
 {
     /// <summary>Choose a path for <see cref="IntakeNextStep.Question"/>, write one, or defer it.</summary>
@@ -545,7 +545,7 @@ public sealed class IntakeService(
     }
 
     /// <summary>
-    /// The one thing a person should do next (docs/adr/0039), so building
+    /// The one thing a person should do next (docs/adr/0041), so building
     /// the specs is a sequence of decisions the factory puts in front of
     /// them rather than questions they have to know to ask. Documents go in
     /// corpus order — the scope document sorts first, and settling scope
@@ -1023,7 +1023,7 @@ public sealed class IntakeService(
     // ---- paths -------------------------------------------------------------
 
     /// <summary>
-    /// Offers paths for every open question that has none (docs/adr/0039):
+    /// Offers paths for every open question that has none (docs/adr/0041):
     /// one model call per document, shown the document, the import's scope
     /// document and its guidance, returning 2–4 options per question with
     /// what each commits to. Suggestions, not answers — a person still

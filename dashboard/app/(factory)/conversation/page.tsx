@@ -736,7 +736,7 @@ function AgentTurn({ turn, latest }: { turn: TurnRow; latest: boolean }) {
  * In the product the card's status is the amendment's, read back from the
  * factory after every decision. The prototype keeps its one local decision.
  *
- * A `decision` (ADR-0039) is answered by the next turn, so only the newest
+ * A `decision` (ADR-0041) is answered by the next turn, so only the newest
  * turn's cards take answers; earlier ones are drawn read-only.
  */
 function TurnPayloads({ payloads, latest }: { payloads: Payload[]; latest: boolean }) {

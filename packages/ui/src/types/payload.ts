@@ -1,7 +1,7 @@
 /**
  * ADR-0021's rendering vocabulary, as it appears on the wire.
  *
- * Ten component types, of which `spec_diff` and `decision` (ADR-0039) are
+ * Ten component types, of which `spec_diff` and `decision` (ADR-0041) are
  * the ones with a schema under `contracts/schemas/` today. The rest are typed
  * here and marked **proposed** so that writing their schemas stays a
  * deliberate act.
@@ -135,7 +135,7 @@ export interface DecisionOption {
 }
 
 /**
- * Something a person has to decide, with the paths open to them (ADR-0039).
+ * Something a person has to decide, with the paths open to them (ADR-0041).
  * Schema-backed: `contracts/schemas/decision.schema.json`.
  */
 export interface Decision {

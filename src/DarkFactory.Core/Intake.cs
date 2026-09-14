@@ -153,7 +153,7 @@ public sealed class IntakeQuestion
 
     /// <summary>
     /// The paths open to whoever answers — 2 to 4 <see cref="IntakeOption"/>s
-    /// as JSON (docs/adr/0039). Null until extraction or a paths suggestion
+    /// as JSON (docs/adr/0041). Null until extraction or a paths suggestion
     /// supplies them; a question without options can still be answered in
     /// one's own words.
     /// </summary>

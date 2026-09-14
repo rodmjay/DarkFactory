@@ -316,7 +316,7 @@ export const approvals: Record<string, Approval> = {
   },
 };
 
-/** Decisions from the drones intake (ADR-0039): an intake question with a
+/** Decisions from the drones intake (ADR-0041): an intake question with a
  *  recommendation, and a contradiction that must be settled one way or the
  *  other. */
 export const decisions: Record<"mapScope" | "lowBattery" | "cargoMix", Decision> = {

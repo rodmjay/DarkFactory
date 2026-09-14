@@ -16,7 +16,7 @@ Conversational and run responses are typed payloads, not prose alone. The
 factory owns a versioned vocabulary of renderable component types —
 `spec_diff`, `dependency_graph`, `stage_timeline`, `approval_card`, `table`,
 `code_diff`, `form`, `metric`, `markdown`, and `decision` (added by
-[ADR-0039](0039-decisions-are-a-payload.md), making ten) — each backed by a JSON Schema
+[ADR-0041](0041-decisions-are-a-payload.md), making ten) — each backed by a JSON Schema
 under `contracts/schemas/`. Plugins and stage agents emit payloads that
 bind to these existing types; they never ship their own UI. If a plugin
 needs to represent something the vocabulary doesn't cover, it either maps

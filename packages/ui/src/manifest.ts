@@ -389,7 +389,7 @@ export const manifest: DesignSystemManifest = {
         "answered",
         "deferred",
       ],
-      shape: "contracts/schemas/decision.schema.json; ADR-0039",
+      shape: "contracts/schemas/decision.schema.json; ADR-0041",
       constraint:
         "A recommended option is marked, never preselected — it is the proposer's view and choosing it is still the person's decision. Leaving a decision open requires a reason. With no callbacks the card is read-only and keeps full contrast: a consequence dimmed to half opacity is one nobody reads.",
     },

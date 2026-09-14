@@ -35,7 +35,7 @@ export interface DecisionCardProps extends Omit<React.ComponentProps<"div">, "ch
 type Mode = "choose" | "other" | "defer";
 
 /**
- * Something a person has to decide, with the paths open to them (ADR-0039).
+ * Something a person has to decide, with the paths open to them (ADR-0041).
  *
  * The card does not know what answering means. Choosing an option, writing
  * one's own, or leaving it open call back to the screen that shows it —

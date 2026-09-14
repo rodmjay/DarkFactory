@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DarkFactory.Data.Tests;
 
 /// <summary>
-/// docs/adr/0039: what the architect needs a person to decide arrives as a
+/// docs/adr/0041: what the architect needs a person to decide arrives as a
 /// decision with its paths, not as questions buried in prose. Under test is
 /// what the factory keeps — valid decisions become payloads, invalid ones are
 /// dropped without costing the reply — and that the architect is told to

@@ -491,7 +491,7 @@ export interface FactoryIntakeQuestion {
   quote?: string | null;
   answer?: string | null;
   affects: number[];
-  /** Empty until extraction or df.intake.suggest_paths supplies them (ADR-0039). */
+  /** Empty until extraction or df.intake.suggest_paths supplies them (ADR-0041). */
   options?: FactoryOption[];
 }
 

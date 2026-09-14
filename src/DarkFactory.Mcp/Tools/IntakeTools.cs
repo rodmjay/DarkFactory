@@ -107,7 +107,7 @@ public static class IntakeTools
     }
 
     [McpServerTool(Name = "df.intake.suggest_paths"),
-     Description("Offer 2–4 answers, each with its consequence, for every open question on an import that has none (ADR-0039). One model call per document. Suggestions only; a person still chooses.")]
+     Description("Offer 2–4 answers, each with its consequence, for every open question on an import that has none (ADR-0041). One model call per document. Suggestions only; a person still chooses.")]
     public static async Task<IntakePathsResult> SuggestPaths(
         IntakeService intake,
         [Description("The intake id.")] string intake_id,
@@ -118,7 +118,7 @@ public static class IntakeTools
     }
 
     [McpServerTool(Name = "df.intake.next"),
-     Description("The one thing a person should do next on an import (ADR-0039): decide a question (with its paths), rebuild a document's draft with the answers, propose a document's specs into pending, extract an unread document, or done. Documents go in corpus order, scope first.")]
+     Description("The one thing a person should do next on an import (ADR-0041): decide a question (with its paths), rebuild a document's draft with the answers, propose a document's specs into pending, extract an unread document, or done. Documents go in corpus order, scope first.")]
     public static async Task<IntakeNextResult> Next(
         IntakeService intake,
         [Description("The intake id.")] string intake_id,
@@ -337,7 +337,7 @@ public sealed record IntakeQuestionRow(
     string? Answer,
     int RaisedInRevision,
     int? IncorporatedInRevision,
-    // The paths open to whoever answers (ADR-0039); empty until suggested.
+    // The paths open to whoever answers (ADR-0041); empty until suggested.
     IReadOnlyList<IntakeOption> Options);
 
 public sealed record IntakePathsResult(int QuestionsUpdated, int SourcesProcessed, int TokensUsed);

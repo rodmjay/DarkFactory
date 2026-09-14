@@ -227,7 +227,7 @@ export async function refreshIntakeAction(intakeId: string): Promise<Result<Inta
 // ------------------------------------------------------------ the guided walk
 
 /**
- * The one thing to do next on this project's imports (ADR-0039): the
+ * The one thing to do next on this project's imports (ADR-0041): the
  * oldest import that is not done, or the last import's "done" when all are.
  * Null when nothing has been imported.
  */

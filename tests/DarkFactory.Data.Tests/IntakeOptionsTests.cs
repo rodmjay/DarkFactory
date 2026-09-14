@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DarkFactory.Data.Tests;
 
 /// <summary>
-/// docs/adr/0039: a question is a decision, so it arrives with the paths
+/// docs/adr/0041: a question is a decision, so it arrives with the paths
 /// open to whoever answers it. What is under test is what the factory keeps
 /// and refuses — 2 to 4 options, at most one recommended, ids its own — and
 /// that a suggestion never answers anything.

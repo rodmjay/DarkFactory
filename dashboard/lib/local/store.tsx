@@ -181,7 +181,7 @@ export interface SpecsControls {
 }
 
 /**
- * The guided walk through building the specs (ADR-0039): the one next step
+ * The guided walk through building the specs (ADR-0041): the one next step
  * the factory says is due, and the calls that take it. Each call re-reads
  * the step after, so the panel always shows what is next now.
  */
@@ -761,7 +761,7 @@ export function useSpecs(): SpecsControls {
   return useLocalDb().specs;
 }
 
-/** The one next step in building the specs, and the calls that take it (ADR-0039). */
+/** The one next step in building the specs, and the calls that take it (ADR-0041). */
 export function useGuide(): GuideControls {
   return useLocalDb().guide;
 }

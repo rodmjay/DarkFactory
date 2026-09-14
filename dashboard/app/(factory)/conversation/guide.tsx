@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Building the specs, one decision at a time (ADR-0039).
+ * Building the specs, one decision at a time (ADR-0041).
  *
  * A person importing a body of specifications should not have to know what
  * to ask the architect. The factory knows what is next — `df.intake.next` —

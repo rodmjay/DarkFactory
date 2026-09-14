@@ -1,4 +1,4 @@
-# ADR-0039: A decision is a payload — what needs you, with the paths open
+# ADR-0041: A decision is a payload — what needs you, with the paths open
 
 ## Status
 Accepted. Adds a tenth component type to

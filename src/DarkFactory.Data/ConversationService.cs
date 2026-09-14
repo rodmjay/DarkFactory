@@ -31,7 +31,7 @@ public abstract record RenderPayload;
 
 /// <summary>
 /// Something the architect needs the person to decide, with the paths open
-/// (docs/adr/0039, contracts/schemas/decision.schema.json). Answering it is
+/// (docs/adr/0041, contracts/schemas/decision.schema.json). Answering it is
 /// the next turn.
 /// </summary>
 public sealed record DecisionPayload(
@@ -347,7 +347,7 @@ public sealed class ConversationService(
         }
 
         // What the architect needs decided goes after its prose, as cards
-        // the person answers by choosing (docs/adr/0039).
+        // the person answers by choosing (docs/adr/0041).
         if (parsed?.Decisions is { Count: > 0 } asked)
         {
             payloads.AddRange(asked);
@@ -624,7 +624,7 @@ public sealed class ConversationService(
     private const int MaxDecisions = 3;
 
     /// <summary>
-    /// The architect's decisions (docs/adr/0039), at most three, in the
+    /// The architect's decisions (docs/adr/0041), at most three, in the
     /// shape intake questions use. One that breaks the contract is dropped
     /// rather than retried: the reply is still worth having, and the person
     /// can always answer in their own words.

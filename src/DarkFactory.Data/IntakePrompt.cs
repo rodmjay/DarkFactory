@@ -241,7 +241,7 @@ public static class IntakePrompt
     public const string PathsInstruction = "Suggest the paths now. Reply with the single JSON object only.";
 
     /// <summary>
-    /// Offering paths for questions extraction raised (docs/adr/0039). The
+    /// Offering paths for questions extraction raised (docs/adr/0041). The
     /// scope document and the import's guidance are always shown, because
     /// "what could the answer be" is mostly "what does the rest of the
     /// product already commit to".

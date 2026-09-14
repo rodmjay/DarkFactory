@@ -4,7 +4,7 @@ using DarkFactory.Core;
 namespace DarkFactory.Data.Tests;
 
 /// <summary>
-/// docs/adr/0039: the factory, not the person, knows what to do next. What
+/// docs/adr/0041: the factory, not the person, knows what to do next. What
 /// is under test is the order of the steps — scope document first, and
 /// within a document decide, rebuild, propose — and that the walk ends with
 /// every document's specs pending, never approved.

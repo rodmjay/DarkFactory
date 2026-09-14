@@ -405,7 +405,7 @@ transcription of whatever the first component happened to need.
 | `SpecNodeCard` | `node: SpecNode`, `selected` | default, selected, retired, drifted | ADR-0016 + ADR-0024 |
 | `SpecDiff` | `diff: SpecDiffDocument`, `conflicts`, `summary` | with conflicts, without, empty | `specdiff.schema.json`; `conflicts` proposed |
 | `ApprovalCard` | `approval: Approval`, `canDecide`, `onApprove`, `onReject` | awaiting, approved, rejected, waiting-on-others | proposed `approval_card` |
-| `DecisionCard` | `decision: Decision`, `state` (`open` · `answered` · `deferred`), `busy`, `onChoose`, `onOther`, `onDefer`, `defaultMode` | open with a recommended option, open without own-words or leave-open, answering in own words, leaving open, answered, deferred | `decision.schema.json`; ADR-0039 |
+| `DecisionCard` | `decision: Decision`, `state` (`open` · `answered` · `deferred`), `busy`, `onChoose`, `onOther`, `onDefer`, `defaultMode` | open with a recommended option, open without own-words or leave-open, answering in own words, leaving open, answered, deferred | `decision.schema.json`; ADR-0041 |
 | `AmendmentRow` | `amendment: Amendment`, `inBatch`, `seq` | default, in-batch, blocked-by-dependency | ADR-0029 |
 | `BatchCard` | `batch: Batch`, `onDeploy` | composing, running, blocked-by-verify, deployable, deployed | ADR-0029 |
 | `TeamMemberCard` | `member: TeamMember` | native agent, agent server, persona (priced), over-budget | ADR-0028 |
@@ -446,7 +446,7 @@ what was agreed to.
 carries the proposer's view as a "Recommended" badge on one option, and
 nothing is selected until a person picks. A card that arrived with the
 recommendation already chosen would make "accept the default" the path of
-least resistance for every question in the list, and ADR-0039 records the
+least resistance for every question in the list, and ADR-0041 records the
 choice as the person's, not the proposer's. Leaving a decision open asks for
 a reason for the same reason a rejection does. Read-only (no callbacks, as
 `PayloadRenderer` draws it) keeps the options at full contrast rather than

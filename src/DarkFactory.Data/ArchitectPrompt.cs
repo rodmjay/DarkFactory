@@ -124,7 +124,7 @@ public static class ArchitectPrompt
             """);
         builder.AppendLine();
         builder.AppendLine("""
-            Rules for the reply and decisions (docs/adr/0039):
+            Rules for the reply and decisions (docs/adr/0041):
             - Keep "reply" to three sentences or fewer. Say what you did or found; do not list
               questions in it.
             - Anything you need the user to decide goes in "decisions", at most three per turn,
