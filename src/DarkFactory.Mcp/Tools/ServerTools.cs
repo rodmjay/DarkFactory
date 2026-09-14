@@ -73,6 +73,14 @@ public static class ServerTools
         return new ServerCheckResult(check.Outcome.ToString(), ServerSummary.From(server));
     }
 
+    [McpServerTool(Name = "df.standards.ingest"),
+     Description("Copy a standards server's documents into the factory's index now (docs/adr/0023). Happens on its own at registration and whenever the server is re-verified or heals; this is for asking again.")]
+    public static async Task<StandardsIngest> IngestStandards(
+        StandardsIngestService standards,
+        [Description("The standards server's id, from df.servers.list.")] string server_id,
+        CancellationToken cancellationToken = default) =>
+        await Errors.Surfacing(() => standards.IngestAsync(server_id, cancellationToken));
+
     [McpServerTool(Name = "df.servers.remove"),
      Description("Retire a registered server. Refused while active runs still reference it.")]
     public static async Task<ServerSummary> Remove(

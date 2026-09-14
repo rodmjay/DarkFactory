@@ -55,7 +55,11 @@ public sealed record ServerCheck(
 /// nobody has to re-register anything.</item>
 /// </list>
 /// </summary>
-public sealed class ServerHealthService(DarkFactoryDbContext db, IServerProbe probe, ServerRegistry registry)
+public sealed class ServerHealthService(
+    DarkFactoryDbContext db,
+    IServerProbe probe,
+    ServerRegistry registry,
+    StandardsIngestService? standards = null)
 {
     public static readonly TimeSpan HealthyInterval = TimeSpan.FromSeconds(30);
 
@@ -100,6 +104,47 @@ public sealed class ServerHealthService(DarkFactoryDbContext db, IServerProbe pr
     }
 
     public async Task<ServerCheck> CheckAsync(Server server, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        var check = await CheckConnectionAsync(server, now, cancellationToken);
+        await IngestStandardsIfDueAsync(server, check.Outcome, cancellationToken);
+        return check;
+    }
+
+    /// <summary>
+    /// A standards server is ingested when it has never been, and again
+    /// whenever it was just re-verified or healed — the moments its content
+    /// may have changed. So registering one is enough; nobody has to ask.
+    /// A failed ingest is left for the next check to retry: the previous
+    /// ingest keeps serving, and a health check must not fail because a
+    /// document did.
+    /// </summary>
+    private async Task IngestStandardsIfDueAsync(Server server, ServerCheckOutcome outcome, CancellationToken cancellationToken)
+    {
+        if (standards is null
+            || !string.Equals(server.Domain, StandardsIngestService.Domain, StringComparison.Ordinal)
+            || server.Status is not (ServerStatus.Conformant or ServerStatus.Degraded))
+        {
+            return;
+        }
+
+        var due = outcome is ServerCheckOutcome.Reverified or ServerCheckOutcome.Healed
+            || !await db.StandardsIndex.AnyAsync(s => s.ServerId == server.Id, cancellationToken);
+        if (!due)
+        {
+            return;
+        }
+
+        try
+        {
+            await standards.IngestAsync(server.Id, cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            // Retried on the next check; see the summary.
+        }
+    }
+
+    private async Task<ServerCheck> CheckConnectionAsync(Server server, DateTimeOffset now, CancellationToken cancellationToken)
     {
         server.LastCheckedAt = now;
 

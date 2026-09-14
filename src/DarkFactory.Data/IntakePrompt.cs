@@ -16,11 +16,11 @@ namespace DarkFactory.Data;
 public static class IntakePrompt
 {
     /// <summary>Bumped when the prompt changes, so docs/adr/0032 can attribute outcomes to a template.</summary>
-    public const string TemplateVersion = "intake/1";
+    public const string TemplateVersion = "intake/2";
 
     public static ContextSkill IntakeSkill { get; } = new(
         Name: "intake",
-        Version: "0.1.0",
+        Version: "0.2.0",
         Instructions: """
             You are importing an existing body of specifications into a project's
             specification graph. The corpus below is every source document, written as
@@ -43,6 +43,11 @@ public static class IntakePrompt
                restates something another document owns in more detail, leave it to that
                document's extraction. Relate to other documents by citing them in a
                rationale; edges may only join nodes within this draft.
+
+            4. Respect the standards. Each target comes with the house standards it names:
+               rules for HOW things are built, owned by the organisation, not by this
+               document. Never extract a standard as a node. Where the document
+               contradicts one, raise a contradiction hole naming the standard.
 
             Design notes, file layouts and implementation sketches in a source are not
             specifications. Extract the behaviour they imply only where the document
@@ -136,12 +141,36 @@ public static class IntakePrompt
         int revision,
         IReadOnlyList<IntakeQuestion> questions,
         string? previousDraft,
-        IReadOnlyList<string> layersInUse)
+        IReadOnlyList<string> layersInUse,
+        IReadOnlyList<StandardsIndexEntry> standards,
+        IReadOnlyList<string> missingStandards)
     {
         var builder = new StringBuilder();
 
         builder.AppendLine("## Target document");
         builder.AppendLine($"`{target.SourceRef}` — {target.Title}. This is extraction {revision} of it.");
+        builder.AppendLine();
+
+        builder.AppendLine("## Standards this document names");
+        if (standards.Count == 0 && missingStandards.Count == 0)
+        {
+            builder.AppendLine("(the document names none)");
+        }
+        foreach (var standard in standards)
+        {
+            builder.AppendLine();
+            builder.AppendLine($"### {standard.Title} (`{standard.SourceRef}`, updated {standard.Updated ?? "unknown"})");
+            builder.AppendLine(standard.Text.Trim());
+        }
+        if (missingStandards.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Named by the document but not served by any connected standards server — do not guess at them:");
+            foreach (var id in missingStandards)
+            {
+                builder.AppendLine($"- `{id}`");
+            }
+        }
         builder.AppendLine();
 
         builder.AppendLine("## Layers already in use");

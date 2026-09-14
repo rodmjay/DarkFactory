@@ -185,6 +185,9 @@ public sealed record IntakeContextPack
     [JsonPropertyName("questions")] public required IReadOnlyList<ContextIntakeQuestion> Questions { get; init; }
     [JsonPropertyName("previous_draft")] public string? PreviousDraft { get; init; }
     [JsonPropertyName("layers_in_use")] public required IReadOnlyList<string> LayersInUse { get; init; }
+
+    /// <summary>The standards shown with the target, as <c>server:id@updated</c> — which revision of each rule it saw.</summary>
+    [JsonPropertyName("standards")] public IReadOnlyList<string> Standards { get; init; } = [];
     [JsonPropertyName("skills")] public required IReadOnlyList<ContextSkill> Skills { get; init; }
     [JsonPropertyName("assembled_at")] public required DateTimeOffset AssembledAt { get; init; }
     [JsonPropertyName("attempt")] public required int Attempt { get; init; }

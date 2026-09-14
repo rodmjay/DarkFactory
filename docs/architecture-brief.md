@@ -290,6 +290,7 @@ df.intake.propose(source_id)                         → amendment; refused whil
 df.intake.pull(project_id, server_id, area?)         import from a corpus server (ADR-0038)
 df.intake.drift(intake_id)                           what changed at the source since the pull
 df.servers.check(server_id)                          health check now; heals if it was down (ADR-0038)
+df.standards.ingest(server_id)                       copy a standards server into the index (ADR-0023); also automatic
 ```
 
 Resources: `factory://projects`, `factory://projects/{id}/specs`,

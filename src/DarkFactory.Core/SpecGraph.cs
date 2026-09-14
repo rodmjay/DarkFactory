@@ -296,6 +296,13 @@ public sealed class StandardsIndexEntry
     public required string Layer { get; init; }
     public required string Text { get; init; }
     public required string SourceRef { get; init; }
+
+    // Written by ingest (StandardsIngestService, docs/adr/0023).
+    public string? Title { get; init; }
+
+    /// <summary>The server's own <c>updated</c> for the standard — what a later ingest compares, and what a context pack records.</summary>
+    public string? Updated { get; init; }
+    public DateTimeOffset? IngestedAt { get; init; }
 }
 
 // AgentPolicy (docs/adr/0022) is superseded by team_members and

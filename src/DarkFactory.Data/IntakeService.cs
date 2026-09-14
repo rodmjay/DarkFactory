@@ -203,13 +203,14 @@ public sealed class IntakeService(
 
         var revision = source.DraftRevision + 1;
         var layers = LayersInUse(corpus.Where(s => s.Id != source.Id));
+        var (standards, missingStandards) = await StandardsNamedAsync(source, cancellationToken);
         var prefix = IntakePrompt.CacheablePrefix(corpus);
-        var system = IntakePrompt.SystemPrompt(source, revision, questions, source.DraftJson, layers);
+        var system = IntakePrompt.SystemPrompt(source, revision, questions, source.DraftJson, layers, standards, missingStandards);
         var messages = new List<ModelMessage> { new(ModelRole.User, IntakePrompt.Instruction(source)) };
 
         // ---- attempt 1 ----------------------------------------------------
 
-        var packRef = await StorePackAsync(intake, source, agent, questions, revision, layers, attempt: 1, cancellationToken);
+        var packRef = await StorePackAsync(intake, source, agent, questions, revision, layers, standards, attempt: 1, cancellationToken);
         var completion = await gateway.CompleteAsync(
             Request(agent, prefix, system, messages, CallContext(source, agent, packRef, attempt: 1)),
             cancellationToken);
@@ -220,7 +221,7 @@ public sealed class IntakeService(
 
         if (!outcome.Result.IsValid)
         {
-            packRef = await StorePackAsync(intake, source, agent, questions, revision, layers, attempt: 2, cancellationToken);
+            packRef = await StorePackAsync(intake, source, agent, questions, revision, layers, standards, attempt: 2, cancellationToken);
 
             var retryMessages = messages.ToList();
             retryMessages.Add(new ModelMessage(ModelRole.Assistant, completion.Text));
@@ -523,6 +524,34 @@ public sealed class IntakeService(
     }
 
     /// <summary>
+    /// The standards the document names in its front matter, from the
+    /// project's ingested standards (docs/adr/0023). Named but not ingested
+    /// is reported, not hidden: a document governed by a rule nobody can
+    /// read is a gap worth seeing.
+    /// </summary>
+    private async Task<(IReadOnlyList<StandardsIndexEntry> Found, IReadOnlyList<string> Missing)> StandardsNamedAsync(
+        IntakeSource source, CancellationToken cancellationToken)
+    {
+        var named = StandardsIngestService.NamedIn(source.Content).ToList();
+        if (named.Count == 0)
+        {
+            return ([], []);
+        }
+
+        var rows = await db.StandardsIndex.AsNoTracking()
+            .Where(s => named.Contains(s.ChunkRef) && (s.ProjectId == source.ProjectId || s.ProjectId == null))
+            .ToListAsync(cancellationToken);
+
+        var found = rows
+            .GroupBy(s => s.ChunkRef, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(s => named.IndexOf(s.ChunkRef))
+            .ToList();
+        var missing = named.Except(found.Select(s => s.ChunkRef), StringComparer.Ordinal).ToList();
+        return (found, missing);
+    }
+
+    /// <summary>
     /// Layers are open (docs/adr/0016), and forty independent extractions
     /// would otherwise name the same part of the product forty ways. Each
     /// one is shown what the others chose.
@@ -592,6 +621,7 @@ public sealed class IntakeService(
         IReadOnlyList<IntakeQuestion> questions,
         int revision,
         IReadOnlyList<string> layers,
+        IReadOnlyList<StandardsIndexEntry> standards,
         int attempt,
         CancellationToken cancellationToken)
     {
@@ -610,6 +640,7 @@ public sealed class IntakeService(
                 .ToList(),
             PreviousDraft = source.DraftJson,
             LayersInUse = layers,
+            Standards = standards.Select(s => $"{s.SourceRef}@{s.Updated}").ToList(),
             Skills = [IntakePrompt.IntakeSkill],
             AssembledAt = DateTimeOffset.UtcNow,
             Attempt = attempt,
