@@ -199,6 +199,26 @@ inference sat in the contract document until it was corrected.
 
 ## Next
 
+**What happened while I was writing this report.** My scoped commit returned
+*"nothing added to commit"* — because the other session had already run
+`git add -A && git commit`, and its commit `5e244b1` ("Wire the new-project
+workflow to the real factory") contains all five of my files alongside its
+dashboard work. It had also created and switched this checkout to a branch,
+`screens-step4`, which now carries four commits including "Build the eight
+step-4 screens from the Claude Design prototype".
+
+So step 4 has been built, from the prototype, by the other session, while
+instruction 0001 had me holding for it.
+
+My content is intact and byte-identical to my working tree — nothing was
+lost — but it sits on the wrong branch inside a commit whose message
+describes something else. I did not rewrite that commit: `docs/SESSIONS.md`
+forbids rewriting history another session may be sitting on, and it is
+theirs. I did not switch this checkout back to `main` either, because that
+would pull files out from under a session that is still running. Instead I
+took my own worktree on `main` — the rule that exists for exactly this —
+and committed the five documents there, cleanly.
+
 **Blocked, and it needs Rod, not me.** Two sessions are writing to
 `/home/rodmjay/dev/darkfactory` and sharing its index. I have not touched
 the other session's files and will not — `docs/SESSIONS.md` says
