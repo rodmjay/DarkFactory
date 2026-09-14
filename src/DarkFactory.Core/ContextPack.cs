@@ -44,11 +44,53 @@ public sealed record ContextPack
     /// </summary>
     [JsonPropertyName("skills")] public required IReadOnlyList<ContextSkill> Skills { get; init; }
 
+    /// <summary>
+    /// The servers this project is connected to and how each stood when the
+    /// turn was assembled (docs/adr/0038). Without it the architect cannot
+    /// tell a project with nothing connected from one whose specifications
+    /// are sitting on a server it was never told about — and it said as
+    /// much, to a user whose corpus server had been answering every thirty
+    /// seconds for three hours.
+    /// </summary>
+    [JsonPropertyName("connections")] public IReadOnlyList<ContextConnection> Connections { get; init; } = [];
+
+    /// <summary>
+    /// Specifications imported but not yet in the graph (docs/adr/0037).
+    /// Title and summary per document, not the text: enough to answer "what
+    /// specs are there" and to avoid proposing duplicates, at a fraction of
+    /// the corpus's size on every turn.
+    /// </summary>
+    [JsonPropertyName("imports")] public IReadOnlyList<ContextImport> Imports { get; init; } = [];
+
     [JsonPropertyName("assembled_at")] public required DateTimeOffset AssembledAt { get; init; }
 
     /// <summary>Which attempt this pack served. A retry after a schema failure records its own pack.</summary>
     [JsonPropertyName("attempt")] public required int Attempt { get; init; }
 }
+
+public sealed record ContextConnection(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("domain")] string Domain,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("last_seen_at")] DateTimeOffset? LastSeenAt,
+    [property: JsonPropertyName("unreachable_since")] DateTimeOffset? UnreachableSince,
+    [property: JsonPropertyName("last_error")] string? LastError);
+
+public sealed record ContextImport(
+    [property: JsonPropertyName("intake_id")] string IntakeId,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("source")] string? Source,
+    [property: JsonPropertyName("extracted")] int Extracted,
+    [property: JsonPropertyName("proposed")] int Proposed,
+    [property: JsonPropertyName("open_questions")] int OpenQuestions,
+    [property: JsonPropertyName("documents")] IReadOnlyList<ContextImportDocument> Documents);
+
+public sealed record ContextImportDocument(
+    [property: JsonPropertyName("source_ref")] string SourceRef,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("summary")] string Summary,
+    [property: JsonPropertyName("status")] string Status);
 
 public sealed record ContextAgent(
     [property: JsonPropertyName("role")] string Role,

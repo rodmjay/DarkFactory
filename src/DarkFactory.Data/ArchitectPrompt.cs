@@ -17,7 +17,7 @@ namespace DarkFactory.Data;
 public static class ArchitectPrompt
 {
     /// <summary>Bumped when the prompt changes, so docs/adr/0032 can attribute outcomes to a template.</summary>
-    public const string TemplateVersion = "architect/1";
+    public const string TemplateVersion = "architect/2";
 
     /// <summary>
     /// The built-in skill the architect runs with, until the skills tables
@@ -26,9 +26,19 @@ public static class ArchitectPrompt
     /// </summary>
     public static ContextSkill ArchitectSkill { get; } = new(
         Name: "architect",
-        Version: "0.1.0",
+        Version: "0.2.0",
         Instructions: """
             You maintain a project's specification graph through conversation.
+
+            Specifications can exist before they are in the graph. You are told
+            which servers this project is connected to and how each stands, and
+            which documents have been imported but not yet extracted. When asked
+            what specifications exist, answer from all of it: what is in the
+            graph, what has been imported and from where, and that an imported
+            document becomes nodes through intake — extracted, its questions
+            answered, proposed, approved. Never call a project empty when it has
+            imports. Do not propose nodes that restate an imported document;
+            that is intake's work, and doing it here makes duplicates.
 
             A spec node is ONE behaviour, rule, or constraint, stated so it can be
             checked — "renewal is blocked if the account is delinquent", not
@@ -136,10 +146,28 @@ public static class ArchitectPrompt
     {
         var builder = new StringBuilder();
 
+        builder.AppendLine("## Connected servers");
+        if (pack.Connections.Count == 0)
+        {
+            builder.AppendLine("(none — this project is not connected to any server)");
+        }
+        foreach (var server in pack.Connections)
+        {
+            var standing = server.Status == nameof(ServerStatus.Unreachable)
+                ? $"Unreachable since {Utc(server.UnreachableSince)}{(server.LastError is null ? "" : $" ({server.LastError})")}; the factory is retrying"
+                : $"{server.Status}, last answered {Utc(server.LastSeenAt)}";
+            builder.AppendLine($"- `{server.Name}` ({server.Domain}) — {standing} — {server.Url}");
+        }
+        builder.AppendLine();
+
+        var imported = pack.Imports.Sum(i => i.Documents.Count);
+
         builder.AppendLine("## Current specifications");
         if (pack.SpecNeighborhood.Count == 0)
         {
-            builder.AppendLine("(none yet — this project has no specifications)");
+            builder.AppendLine(imported == 0
+                ? "(none yet — this project has no specifications)"
+                : $"(no nodes in the graph yet — but {imported} imported document(s) are awaiting extraction; see below)");
         }
         else
         {
@@ -161,8 +189,32 @@ public static class ArchitectPrompt
             builder.AppendLine();
         }
 
+        if (pack.Imports.Count > 0)
+        {
+            builder.AppendLine("## Imported, not yet in the graph");
+            builder.AppendLine("These documents are this project's existing specifications. They become graph nodes");
+            builder.AppendLine("only through intake; until then, discuss them from these summaries and do not restate them as nodes.");
+            foreach (var import in pack.Imports)
+            {
+                builder.AppendLine();
+                builder.AppendLine(
+                    $"### Import \"{import.Name}\"{(import.Source is null ? "" : $" from `{import.Source}`")} — " +
+                    $"{import.Documents.Count} document(s): {import.Extracted} extracted, {import.Proposed} proposed, " +
+                    $"{import.OpenQuestions} open question(s)");
+                foreach (var document in import.Documents)
+                {
+                    var summary = document.Summary == "" ? "" : $": {document.Summary}";
+                    builder.AppendLine($"- `{document.SourceRef}` — {document.Title} ({document.Status}){summary}");
+                }
+            }
+            builder.AppendLine();
+        }
+
         return builder.ToString();
     }
+
+    private static string Utc(DateTimeOffset? at) =>
+        at is { } value ? value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'") : "never";
 
     /// <summary>
     /// The retry. The model gets the actual violations rather than "that

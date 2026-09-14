@@ -421,9 +421,98 @@ public sealed class ConversationService(
                 .Select(t => new ContextTurn(t.Seq, t.Role.ToString().ToLowerInvariant(), t.Content))
                 .ToList(),
             Skills = [ArchitectPrompt.ArchitectSkill],
+            Connections = await ConnectionsAsync(conversation.ProjectId, cancellationToken),
+            Imports = await ImportsAsync(conversation.ProjectId, cancellationToken),
             AssembledAt = DateTimeOffset.UtcNow,
             Attempt = attempt,
         };
+    }
+
+    /// <summary>
+    /// The project's servers: its workspace, which is bound by URL, and every
+    /// server registered for the project. Status is the health monitor's
+    /// latest word (docs/adr/0038), so "connected" means answered within the
+    /// last check, not registered once.
+    /// </summary>
+    private async Task<IReadOnlyList<ContextConnection>> ConnectionsAsync(string projectId, CancellationToken cancellationToken)
+    {
+        var project = await db.Projects.AsNoTracking().SingleAsync(p => p.Id == projectId, cancellationToken);
+
+        var servers = await db.Servers.AsNoTracking()
+            .Where(s => s.RemovedAt == null && s.OrgId == project.OrgId
+                && (s.ProjectId == project.Id || s.Url == project.WorkspaceMcpUrl))
+            .OrderBy(s => s.Domain).ThenBy(s => s.Name)
+            .ToListAsync(cancellationToken);
+
+        return servers
+            .Select(s => new ContextConnection(
+                s.Name, s.Domain, s.Url, s.Status.ToString(), s.LastSeenAt, s.UnreachableSince, s.LastError))
+            .ToList();
+    }
+
+    /// <summary>The most documents listed per import; past that the prompt says how many more.</summary>
+    public const int ImportDocumentLimit = 200;
+
+    private async Task<IReadOnlyList<ContextImport>> ImportsAsync(string projectId, CancellationToken cancellationToken)
+    {
+        var intakes = await db.Intakes.AsNoTracking()
+            .Where(i => i.ProjectId == projectId)
+            .OrderBy(i => i.CreatedAt)
+            .ToListAsync(cancellationToken);
+        if (intakes.Count == 0)
+        {
+            return [];
+        }
+
+        var serverIds = intakes.Where(i => i.SourceServerId != null).Select(i => i.SourceServerId!).ToList();
+        var serverNames = await db.Servers.AsNoTracking()
+            .Where(s => serverIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, cancellationToken);
+
+        var imports = new List<ContextImport>(intakes.Count);
+        foreach (var intake in intakes)
+        {
+            var sources = await db.IntakeSources.AsNoTracking()
+                .Where(s => s.IntakeId == intake.Id)
+                .OrderBy(s => s.Seq)
+                .Select(s => new { s.SourceRef, s.Title, s.Content, s.Status })
+                .ToListAsync(cancellationToken);
+            var open = await db.IntakeQuestions.AsNoTracking()
+                .CountAsync(q => q.IntakeId == intake.Id && q.Status == IntakeQuestionStatus.Open, cancellationToken);
+
+            imports.Add(new ContextImport(
+                intake.Id,
+                intake.Name,
+                intake.SourceServerId is { } id && serverNames.TryGetValue(id, out var name) ? name : null,
+                sources.Count(s => s.Status is IntakeSourceStatus.Extracted or IntakeSourceStatus.Proposed),
+                sources.Count(s => s.Status == IntakeSourceStatus.Proposed),
+                open,
+                sources.Take(ImportDocumentLimit)
+                    .Select(s => new ContextImportDocument(
+                        s.SourceRef, s.Title, SummaryOf(s.Content), s.Status.ToString().ToLowerInvariant()))
+                    .ToList()));
+        }
+
+        return imports;
+    }
+
+    /// <summary>
+    /// A document's one-line summary: its first blockquote line, which is
+    /// where the corpora this was built against keep it. Absent is empty,
+    /// not invented.
+    /// </summary>
+    public static string SummaryOf(string content)
+    {
+        foreach (var raw in content.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("> ", StringComparison.Ordinal))
+            {
+                var summary = line[2..].Trim();
+                return summary.Length <= 240 ? summary : summary[..239] + "…";
+            }
+        }
+        return "";
     }
 
     private async Task<string> StoreContextAsync(
