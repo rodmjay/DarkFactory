@@ -18,13 +18,29 @@ public sealed class ConversationContextTests(SpecGraphTestFixture fixture)
     private static ConversationService Service(FakeModelGateway gateway, DarkFactoryDbContext db) =>
         new(db, gateway, new PostgresArtifactStore(db), new TeamService(db), new SpecGraphService(db), new SpecDiffTranslator(db));
 
+    /// <summary>
+    /// A project in an org of its own. Standards servers are org-wide
+    /// (ADR-0038), so in the fixture's shared org every other test's
+    /// standards server would be one of this project's connections — which
+    /// is correct behaviour and the wrong thing to be asserting about here.
+    /// </summary>
     private async Task<(Project Project, string ConversationId)> SeedAsync()
     {
-        var (projectId, orgId, _) = await fixture.SeedProjectAsync();
+        var suffix = Guid.NewGuid().ToString("n");
+        var project = new Project
+        {
+            Id = $"proj_{suffix}",
+            OrgId = $"org_ctx_{suffix}",
+            Name = $"ctx-{suffix}",
+            WorkspaceMcpUrl = $"http://example.invalid/{suffix}",
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
         await using var db = fixture.NewDb();
-        await new TeamService(db).SeedDefaultTeamAsync(projectId, orgId);
-        var conversation = await Service(new FakeModelGateway(), db).StartAsync(projectId, "specs?", "tester");
-        var project = await db.Projects.AsNoTracking().SingleAsync(p => p.Id == projectId);
+        db.Projects.Add(project);
+        await db.SaveChangesAsync();
+        await new TeamService(db).SeedDefaultTeamAsync(project.Id, project.OrgId);
+        var conversation = await Service(new FakeModelGateway(), db).StartAsync(project.Id, "specs?", "tester");
         return (project, conversation.Id);
     }
 

@@ -42,6 +42,14 @@ answers with `domain: "corpus"`:
 
 `effective_config` values are strings and carry no secrets.
 
+**One address per project.** A workspace often holds several projects —
+Moonbeam holds a dozen games — and a Dark Factory project is one of them.
+A corpus server serves each project at its own address (Moonbeam:
+`/projects/<area>/mcp`), scoped to that project's documents, and says which
+project in `effective_config.project`. The factory refuses to connect a
+server whose `project` names a different project than the one it is being
+connected to. A server without the key is taken to serve whatever it lists.
+
 ## `df.corpus.list(area?, status?)`
 
 Every document's metadata and no bodies:

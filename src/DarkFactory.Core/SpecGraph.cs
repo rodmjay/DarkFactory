@@ -188,7 +188,13 @@ public sealed class Server
 {
     public required string Id { get; init; }
     public required string OrgId { get; init; }
-    public string? ProjectId { get; init; }
+    /// <summary>
+    /// The project this server serves, or null for an org-wide server — a
+    /// standards server always (docs/adr/0038: standards are what the
+    /// organisation decided, shared by every project), and a workspace,
+    /// which a project is bound to by URL instead.
+    /// </summary>
+    public string? ProjectId { get; set; }
 
     /// <summary>
     /// The MCP endpoint. Together with <see cref="OrgId"/> this is the

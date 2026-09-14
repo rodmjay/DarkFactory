@@ -120,8 +120,9 @@ export async function approveAction(amendmentId: string): Promise<Result<void>> 
 
 /**
  * The project's servers and imports, in one read. A server belongs to the
- * project when it was registered for it, or when it is the workspace the
- * project is bound to by URL.
+ * project when it was registered for it, when it is the workspace the
+ * project is bound to by URL, or when it is a standards server — those are
+ * the org's and every project shares them (ADR-0038).
  */
 export async function loadSources(
   projectId: string,
@@ -130,7 +131,12 @@ export async function loadSources(
   return attempt(async () => {
     const [servers, intakes] = await Promise.all([listServers(), listIntakes(projectId)]);
     return {
-      servers: servers.filter((s) => s.project_id === projectId || (workspaceUrl !== null && s.url === workspaceUrl)),
+      servers: servers.filter(
+        (s) =>
+          s.project_id === projectId ||
+          (workspaceUrl !== null && s.url === workspaceUrl) ||
+          (!s.project_id && s.domain === "standards"),
+      ),
       intakes,
     };
   });

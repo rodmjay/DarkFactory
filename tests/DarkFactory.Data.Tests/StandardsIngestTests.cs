@@ -67,7 +67,52 @@ public sealed class StandardsIngestTests(SpecGraphTestFixture fixture)
         Assert.Equal("Rule 11: a system that stops says why.", row.Text);
         Assert.Equal("moonbeam-standards:web-game-structure", row.SourceRef);
         Assert.Equal("2026-09-07", row.Updated);
-        Assert.Equal(projectId, row.ProjectId);
+        // Standards are the org's, whichever project connected the server (ADR-0038).
+        Assert.Null(row.ProjectId);
+        Assert.NotNull(projectId);
+    }
+
+    [Fact]
+    public async Task AnotherOrgsStandardIsNeverShownEvenWhenItIsTheNewest()
+    {
+        var probe = StandardsServer(Corpus());
+        var (projectId, orgId, serverId) = await RegisterAsync(probe);
+        await IngestAsync(probe, serverId);
+
+        // Same id, another org, ingested afterwards — the newest copy anywhere.
+        var otherProbe = StandardsServer([new("web-game-structure", "Web game structure", "ANOTHER ORG'S RULE")]);
+        string otherServerId;
+        await using (var db = fixture.NewDb())
+        {
+            otherServerId = (await new ServerRegistry(db, otherProbe)
+                .RegisterAsync($"org_other_{Guid.NewGuid():n}", $"http://standards-{Guid.NewGuid():n}.invalid/mcp")).Server.Id;
+        }
+        await IngestAsync(otherProbe, otherServerId);
+
+        var gateway = new FakeModelGateway().Responds(JsonSerializer.Serialize(new
+        {
+            reply = "Extracted.",
+            draft = new
+            {
+                creates = new[] { new { kind = "rule", layer = "swarm", text = "An idle drone says why.", rationale = "x" } },
+                revises = Array.Empty<object>(), retires = Array.Empty<object>(),
+                edge_adds = Array.Empty<object>(), edge_retires = Array.Empty<object>(),
+            },
+            holes = Array.Empty<object>(),
+        }));
+
+        await using var work = fixture.NewDb();
+        await new TeamService(work).SeedDefaultTeamAsync(projectId, orgId);
+        var intake = new IntakeService(work, gateway, new PostgresArtifactStore(work), new TeamService(work),
+            new SpecGraphService(work), new SpecDiffTranslator(work));
+        var started = await intake.StartAsync(projectId, "drones", [
+            new("moonbeam-specs:drones/0079-the-working-swarm", "The Working Swarm",
+                "---\nstandards: [web-game-structure]\n---\n# The Working Swarm\n"),
+        ], "tester");
+        await intake.ExtractAsync(started.Sources[0].Id, "tester");
+
+        var prompt = gateway.Requests[0].SystemPrompt;
+        Assert.DoesNotContain("ANOTHER ORG'S RULE", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

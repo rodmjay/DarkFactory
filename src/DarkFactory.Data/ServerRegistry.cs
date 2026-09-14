@@ -56,6 +56,19 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
     {
         var live = await DescribeAsync(url, cancellationToken);
 
+        // docs/adr/0038, as amended: a standards server is the org's, whoever
+        // connected it; anything else connected to a project must not say it
+        // serves a different one. Both settled before anything is stored.
+        var isStandards = string.Equals(live.Domain, StandardsIngestService.Domain, StringComparison.Ordinal);
+        if (isStandards)
+        {
+            projectId = null;
+        }
+        else if (projectId is not null)
+        {
+            await EnsureServesProjectAsync(url, live, projectId, cancellationToken);
+        }
+
         // A supplied manifest is validated against the same published
         // schema as the live response. It is the same shape and it is going
         // to be diffed against a live response, so accepting a malformed
@@ -117,6 +130,15 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
             // blocks a fresh insert on.
             server.RemovedAt = null;
 
+            if (isStandards)
+            {
+                server.ProjectId = null;
+            }
+            else if (projectId is not null)
+            {
+                server.ProjectId = projectId;
+            }
+
             // A manifest is only replaced when a new one is supplied.
             // Otherwise the manifest is the claim of record and the whole
             // point of the diff is that live may have drifted from it.
@@ -143,6 +165,33 @@ public sealed class ServerRegistry(DarkFactoryDbContext db, IServerProbe probe)
 
         var results = await ConformAsync(server, diff, live.Capabilities, cancellationToken);
         return new ServerRegistration(server, live, diff, results);
+    }
+
+    /// <summary>
+    /// One workspace can hold many projects, each served at its own address
+    /// (docs/conventions/corpus.md). A server that says which project it
+    /// serves is only connected to that one; connecting drones to smashhit's
+    /// address would import the wrong game's specifications with nothing to
+    /// say so. A server that names no project is taken at its word.
+    /// </summary>
+    private async Task EnsureServesProjectAsync(
+        string url, DescribeResponse live, string projectId, CancellationToken cancellationToken)
+    {
+        if (!live.EffectiveConfig.TryGetValue("project", out var value) || value.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        var serves = value.GetString()!;
+        var project = await db.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Id == projectId, cancellationToken)
+            ?? throw new ServerRegistrationException($"There is no project '{projectId}' to connect '{url}' to.");
+
+        if (!string.Equals(serves, project.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ServerRegistrationException(
+                $"'{url}' serves project '{serves}', not '{project.Name}'. " +
+                $"Connect '{project.Name}' to its own address — for Moonbeam, …/projects/{project.Name}/mcp.");
+        }
     }
 
     /// <summary>

@@ -87,6 +87,25 @@ factory is authoritative (ADR-0037). `corpus` is its own domain rather than
 standards stay where they are and are read forever; a corpus is read once
 and then owned.
 
+### Amendment (2026-09-14): one address per project; standards are shared
+
+Rod: "we need some way to distinguish multiple projects for a single
+workspace". A Moonbeam corpus server served every game's specs from one
+address, the drones project took its slice by choosing an area at pull
+time, and a server row belongs to at most one project — so a second game
+could not have connected at all.
+
+- **A corpus server serves each project at its own address**, scoped to
+  that project's documents, and names it in `effective_config.project`
+  ([corpus.md](../conventions/corpus.md)). Moonbeam: `/projects/<area>/mcp`.
+  No factory data-model change: distinct addresses are distinct server rows.
+- **Connecting refuses a mismatch.** Registering a server for a project
+  whose handshake names a different project is refused before anything is
+  stored.
+- **Standards servers are org-wide.** Registered with a project or not,
+  a standards server is stored without one and every project in the org
+  sees it — standards are what the organisation decided, not a project.
+
 ## Consequences
 - `servers` gains health columns and `ServerStatus.Unreachable`;
   `df.servers.list` returns them, and `df.servers.check` checks on demand.

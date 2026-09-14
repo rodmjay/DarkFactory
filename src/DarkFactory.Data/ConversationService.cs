@@ -438,9 +438,13 @@ public sealed class ConversationService(
     {
         var project = await db.Projects.AsNoTracking().SingleAsync(p => p.Id == projectId, cancellationToken);
 
+        // Its own servers, its workspace by URL, and the org's standards —
+        // which every project shares (docs/adr/0038).
         var servers = await db.Servers.AsNoTracking()
             .Where(s => s.RemovedAt == null && s.OrgId == project.OrgId
-                && (s.ProjectId == project.Id || s.Url == project.WorkspaceMcpUrl))
+                && (s.ProjectId == project.Id
+                    || s.Url == project.WorkspaceMcpUrl
+                    || (s.ProjectId == null && s.Domain == StandardsIngestService.Domain)))
             .OrderBy(s => s.Domain).ThenBy(s => s.Name)
             .ToListAsync(cancellationToken);
 

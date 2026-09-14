@@ -566,13 +566,23 @@ public sealed class IntakeService(
             return ([], []);
         }
 
-        var rows = await db.StandardsIndex.AsNoTracking()
-            .Where(s => named.Contains(s.ChunkRef) && (s.ProjectId == source.ProjectId || s.ProjectId == null))
+        // This org's live standards servers only: standards are org-wide
+        // (docs/adr/0038), so without the join an id shared by another
+        // org's corpus would be as good a match as this one's. Where two of
+        // the org's servers both carry an id, the latest ingest wins.
+        var rows = await (
+                from standard in db.StandardsIndex.AsNoTracking()
+                join server in db.Servers.AsNoTracking() on standard.ServerId equals server.Id
+                where server.OrgId == source.OrgId
+                    && server.RemovedAt == null
+                    && named.Contains(standard.ChunkRef)
+                    && (standard.ProjectId == source.ProjectId || standard.ProjectId == null)
+                select standard)
             .ToListAsync(cancellationToken);
 
         var found = rows
             .GroupBy(s => s.ChunkRef, StringComparer.Ordinal)
-            .Select(g => g.First())
+            .Select(g => g.OrderByDescending(s => s.IngestedAt).First())
             .OrderBy(s => named.IndexOf(s.ChunkRef))
             .ToList();
         var missing = named.Except(found.Select(s => s.ChunkRef), StringComparer.Ordinal).ToList();
