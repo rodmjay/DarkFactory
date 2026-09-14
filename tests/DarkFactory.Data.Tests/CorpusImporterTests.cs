@@ -237,9 +237,11 @@ public sealed class CorpusImporterTests(SpecGraphTestFixture fixture)
             started = await Importer(probe, db).PullAsync(projectId, serverId, null, null, false, "tester");
         }
 
-        // At the source, after import: one edited, one new, one deleted.
+        // At the source, after import: one edited, one new, one deleted —
+        // and one new in an area this import never pulled, which is not its news.
         docs[1] = docs[1] with { Text = docs[1].Text + "\nThe reserve is computed from the weather too.\n" };
         docs.Add(new Doc("drones/0100-holding-the-circle", "draft", "# Holding the Circle\n"));
+        docs.Add(new Doc("smashhit/0001-glass-fracture", "draft", "# Glass fracture\n"));
         docs.RemoveAt(0);
 
         CorpusDrift drift;

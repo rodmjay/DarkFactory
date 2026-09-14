@@ -143,8 +143,17 @@ public sealed class CorpusImporter(DarkFactoryDbContext db, IServerProbe probe, 
 
         var removed = sources.Where(s => !current.ContainsKey(s.OriginId!)).Select(s => s.OriginId!).ToList();
 
+        // New means new in what was imported — the areas this intake pulled —
+        // not everything else the server happens to hold. Without this, a
+        // drones import reported every smashhit spec as "new at the source".
+        var areas = current.Values
+            .Where(d => imported.Contains(d.Id))
+            .Select(d => d.Area)
+            .ToHashSet(StringComparer.Ordinal);
+
         var added = current.Values
-            .Where(d => !imported.Contains(d.Id) && (d.Status is null || !RetiredStatuses.Contains(d.Status)))
+            .Where(d => !imported.Contains(d.Id) && areas.Contains(d.Area)
+                && (d.Status is null || !RetiredStatuses.Contains(d.Status)))
             .OrderBy(d => d.Id, StringComparer.Ordinal)
             .ToList();
 
